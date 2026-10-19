@@ -32,7 +32,9 @@ export function CreateProjectModal({ onClose, onCreated }: { onClose: () => void
           <input autoFocus required maxLength={200} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Website redesign" />
         </label>
         <label>
-          Key <span className="hint">(optional, used in story IDs like WEB-12)</span>
+          <span>
+            Key <span className="hint">(optional, used in story IDs like WEB-12)</span>
+          </span>
           <input maxLength={10} value={key} onChange={(e) => setKey(e.target.value.toUpperCase())} placeholder="Auto-generated from name" />
         </label>
         <label>

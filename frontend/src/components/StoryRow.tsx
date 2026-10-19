@@ -1,4 +1,4 @@
-import { Tag, UserRound } from 'lucide-react'
+import { ListTree, Tag, UserRound } from 'lucide-react'
 import type { Status } from '../data'
 import type { Sprint, Story, User } from '../api'
 import { AssigneePicker } from './AssigneePicker'
@@ -11,6 +11,7 @@ import { StatusPicker } from './StatusPicker'
 
 export function StoryRow({
   story,
+  subtasks = [],
   sprints,
   allLabels,
   users,
@@ -20,6 +21,7 @@ export function StoryRow({
   onChange,
 }: {
   story: Story
+  subtasks?: Story[]
   sprints: Sprint[]
   allLabels: string[]
   users: User[]
@@ -58,6 +60,12 @@ export function StoryRow({
             <LabelChip key={l} label={l} />
           ))}
         </span>
+        {subtasks.length > 0 && (
+          <span className="subtask-badge" title={`${subtasks.length} subtask${subtasks.length === 1 ? '' : 's'}`}>
+            <ListTree size={12} />
+            {subtasks.filter((s) => s.status === 'done').length}/{subtasks.length}
+          </span>
+        )}
         <LabelPicker
           value={story.labels}
           suggestions={allLabels}

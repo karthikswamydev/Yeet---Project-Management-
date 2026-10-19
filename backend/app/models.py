@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 
 from app.db import Base
@@ -87,6 +87,10 @@ class Story(TenantMixin, Base):
     reporter_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # Set for subtasks (one level deep). Subtasks always share their parent's sprint.
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("stories.id", ondelete="CASCADE"), index=True, nullable=True
+    )
     number: Mapped[int] = mapped_column(Integer)
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str] = mapped_column(Text, default="")
@@ -113,3 +117,33 @@ class StoryComment(TenantMixin, Base):
     author_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     body: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProjectResource(TenantMixin, Base):
+    """A cloud/infra resource a project uses (EC2 instance, S3 bucket, ...), tracked by hand.
+
+    Never store credentials here: identifiers and console links only.
+    """
+
+    __tablename__ = "project_resources"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    # aws | gcp | azure | cloudflare | vercel | digitalocean | other
+    provider: Mapped[str] = mapped_column(String(30))
+    service: Mapped[str] = mapped_column(String(60))
+    # production | staging | development | shared
+    environment: Mapped[str] = mapped_column(String(20), default="production")
+    region: Mapped[str] = mapped_column(String(50), default="")
+    identifier: Mapped[str] = mapped_column(String(300), default="")
+    url: Mapped[str] = mapped_column(String(500), default="")
+    monthly_cost: Mapped[float | None] = mapped_column(Numeric(10, 2, asdecimal=False), nullable=True)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # active | planned | retired
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

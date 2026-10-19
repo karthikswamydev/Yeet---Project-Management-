@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronRight, CircleCheckBig, CircleDot, Play, Plus, Tag, Target } from 'lucide-react'
+import { CalendarDays, ChevronRight, CircleCheckBig, CircleDot, Cloud, ListChecks, Play, Plus, Tag, Target } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { api, type Project, type Sprint, type SprintStatus, type Story, type User } from '../api'
 import { BOARD_COLUMNS, STATUS_LABEL, type Priority, type Status } from '../data'
@@ -6,32 +6,31 @@ import { CreateSprintModal } from './CreateSprintModal'
 import { AssigneeFilter, UNASSIGNED } from './AssigneeFilter'
 import { FilterDropdown } from './FilterDropdown'
 import { LabelChip } from './Label'
+import { projectHref, resourcesHref, type ProjectTab } from '../routes'
+import { ResourcesTab } from './ResourcesTab'
 import { StoryComposer } from './StoryComposer'
 import { StoryPanel } from './StoryPanel'
 import { StoryRow } from './StoryRow'
+import { daysUntil, dueText, formatDay } from '../time'
 
 const SPRINT_STATUS_LABEL: Record<SprintStatus, string> = { planned: 'Planned', active: 'Active', completed: 'Completed' }
 
-function formatDate(iso: string) {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
-
 function dueInfo(sprint: Sprint) {
-  if (sprint.status === 'completed') return null
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const days = Math.round((new Date(`${sprint.due_date}T00:00:00`).getTime() - today.getTime()) / 86_400_000)
-  if (days < 0) return { text: `${-days}d overdue`, tone: 'danger' }
-  if (days === 0) return { text: 'Due today', tone: 'warn' }
-  return { text: `${days}d left`, tone: days <= 3 ? 'warn' : 'muted' }
+  return sprint.status === 'completed' ? null : dueText(daysUntil(sprint.due_date))
 }
 
 export function ProjectPage({
   projectId,
+  storyId,
+  tab,
+  onSelectStory,
   currentUserId,
   onChanged,
 }: {
   projectId: string
+  storyId: string | null
+  tab: ProjectTab
+  onSelectStory: (id: string | null) => void
   currentUserId: string | null
   onChanged: () => void
 }) {
@@ -44,7 +43,6 @@ export function ProjectPage({
   const [labelFilter, setLabelFilter] = useState<string[]>([])
   const [statusFilter, setStatusFilter] = useState<Status[]>([])
   const [assigneeFilter, setAssigneeFilter] = useState<string[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -77,6 +75,12 @@ export function ProjectPage({
     onChanged()
   }
 
+  async function createSubtask(parentId: string, title: string) {
+    const story = await api.createStory(projectId, { title, parent_id: parentId })
+    setStories((prev) => [...prev, story])
+    onChanged()
+  }
+
   async function addUser(name: string) {
     const user = await api.createUser({ name })
     setUsers((prev) => [...prev, user].sort((a, b) => a.name.localeCompare(b.name)))
@@ -86,7 +90,14 @@ export function ProjectPage({
   async function changeStory(id: string, patch: Parameters<typeof api.updateStory>[1]) {
     try {
       const updated = await api.updateStory(id, patch)
-      setStories((prev) => prev.map((s) => (s.id === id ? updated : s)))
+      setStories((prev) =>
+        prev.map((s) => {
+          if (s.id === id) return updated
+          // The server moves subtasks along with their parent.
+          if ('sprint_id' in patch && s.parent_id === id) return { ...s, sprint_id: updated.sprint_id }
+          return s
+        }),
+      )
       onChanged()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -96,8 +107,8 @@ export function ProjectPage({
   async function deleteStory(id: string) {
     try {
       await api.deleteStory(id)
-      setStories((prev) => prev.filter((s) => s.id !== id))
-      setSelectedId(null)
+      setStories((prev) => prev.filter((s) => s.id !== id && s.parent_id !== id))
+      onSelectStory(null)
       onChanged()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -129,11 +140,18 @@ export function ProjectPage({
   )
   const filtering = labelFilter.length > 0 || statusFilter.length > 0 || assigneeFilter.length > 0
   // People with work in this project.
-  const assignedIds = new Set(stories.map((s) => s.assignee_id).filter(Boolean))
+  const parents = stories.filter((s) => !s.parent_id)
+  const assignedIds = new Set(parents.map((s) => s.assignee_id).filter(Boolean))
   const projectPeople = users.filter((u) => assignedIds.has(u.id))
-  const hasUnassigned = stories.some((s) => s.assignee_id === null)
-  const backlog = visible.filter((s) => s.sprint_id === null)
-  const selected = stories.find((s) => s.id === selectedId) ?? null
+  const hasUnassigned = parents.some((s) => s.assignee_id === null)
+  // Subtasks live under their parent (panel + row badge), not as separate rows.
+  const childrenOf = new Map<string, Story[]>()
+  for (const s of stories) {
+    if (s.parent_id) childrenOf.set(s.parent_id, [...(childrenOf.get(s.parent_id) ?? []), s])
+  }
+  const topLevel = visible.filter((s) => !s.parent_id)
+  const backlog = topLevel.filter((s) => s.sprint_id === null)
+  const selected = stories.find((s) => s.id === storyId) ?? null
   const pct = project.story_count ? Math.round((project.done_count / project.story_count) * 100) : 0
 
   return (
@@ -163,13 +181,28 @@ export function ProjectPage({
             {pct}% done · {project.story_count} {project.story_count === 1 ? 'story' : 'stories'}
           </span>
         </div>
-        <button className="btn primary" onClick={() => setShowSprintModal(true)}>
-          <Plus size={16} /> Create sprint
-        </button>
+        {tab === 'work' && (
+          <button className="btn primary" onClick={() => setShowSprintModal(true)}>
+            <Plus size={16} /> Create sprint
+          </button>
+        )}
       </div>
+
+      <nav className="tabs tabs-line project-tabs" aria-label="Project sections">
+        <a href={projectHref(projectId)} className={tab === 'work' ? 'tab active' : 'tab'} aria-current={tab === 'work'}>
+          <ListChecks size={15} /> Backlog &amp; sprints
+        </a>
+        <a href={resourcesHref(projectId)} className={tab === 'resources' ? 'tab active' : 'tab'} aria-current={tab === 'resources'}>
+          <Cloud size={15} /> Resources
+        </a>
+      </nav>
 
       {error && <p className="form-error">{error}</p>}
 
+      {tab === 'resources' && <ResourcesTab projectId={projectId} users={users} />}
+
+      {tab === 'work' && (
+      <>
       <div className="filter-bar">
         <AssigneeFilter
           users={projectPeople}
@@ -224,7 +257,7 @@ export function ProjectPage({
           </div>
         )}
         {sprints.map((sprint) => {
-          const items = visible.filter((s) => s.sprint_id === sprint.id)
+          const items = topLevel.filter((s) => s.sprint_id === sprint.id)
           const done = items.filter((s) => s.status === 'done').length
           const due = dueInfo(sprint)
           return (
@@ -236,8 +269,8 @@ export function ProjectPage({
                   </h3>
                   <div className="sprint-dates">
                     <CalendarDays size={14} />
-                    {sprint.start_date ? `${formatDate(sprint.start_date)} – ` : 'Due '}
-                    {formatDate(sprint.due_date)}
+                    {sprint.start_date ? `${formatDay(sprint.start_date)} – ` : 'Due '}
+                    {formatDay(sprint.due_date)}
                     {due && <span className={`due due-${due.tone}`}> · {due.text}</span>}
                     {sprint.goal && (
                       <span className="sprint-goal">
@@ -265,10 +298,10 @@ export function ProjectPage({
               {items.length > 0 && (
                 <ul className="story-list">
                   {items.map((s) => (
-                    <StoryRow key={s.id} story={s} sprints={sprints} allLabels={allLabels}
+                    <StoryRow key={s.id} story={s} subtasks={childrenOf.get(s.id)} sprints={sprints} allLabels={allLabels}
                       users={users}
-                      selected={s.id === selectedId}
-                      onOpen={setSelectedId}
+                      selected={s.id === storyId}
+                      onOpen={onSelectStory}
                       onAddUser={addUser}
                       onChange={changeStory}
                     />
@@ -297,10 +330,10 @@ export function ProjectPage({
           ) : (
             <ul className="story-list">
               {backlog.map((s) => (
-                <StoryRow key={s.id} story={s} sprints={sprints} allLabels={allLabels}
+                <StoryRow key={s.id} story={s} subtasks={childrenOf.get(s.id)} sprints={sprints} allLabels={allLabels}
                       users={users}
-                      selected={s.id === selectedId}
-                      onOpen={setSelectedId}
+                      selected={s.id === storyId}
+                      onOpen={onSelectStory}
                       onAddUser={addUser}
                       onChange={changeStory}
                     />
@@ -318,6 +351,8 @@ export function ProjectPage({
           </div>
         </div>
       </section>
+      </>
+      )}
 
       {showSprintModal && (
         <CreateSprintModal
@@ -342,7 +377,11 @@ export function ProjectPage({
           onChange={changeStory}
           onAddUser={addUser}
           onDelete={deleteStory}
-          onClose={() => setSelectedId(null)}
+          onClose={() => onSelectStory(null)}
+          parent={selected.parent_id ? (stories.find((s) => s.id === selected.parent_id) ?? null) : null}
+          subtasks={childrenOf.get(selected.id) ?? []}
+          onCreateSubtask={(title) => createSubtask(selected.id, title)}
+          onOpenStory={onSelectStory}
         />
       )}
     </>

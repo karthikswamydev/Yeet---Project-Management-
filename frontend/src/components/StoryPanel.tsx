@@ -1,41 +1,22 @@
-import { BookOpenCheck, ChevronDown, Inbox, Link2, Tag, Trash2, UserRound, X } from 'lucide-react'
+import { BookOpenCheck, ChevronDown, Inbox, Link2, ListTree, Tag, Trash2, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api, type Comment, type Project, type Sprint, type Story, type User } from '../api'
 import type { Priority } from '../data'
 import { AssigneePicker } from './AssigneePicker'
+import { BranchCard } from './BranchCard'
 import { Avatar } from './Avatar'
 import { LabelChip } from './Label'
 import { LabelPicker } from './LabelPicker'
 import { MenuSelect } from './MenuSelect'
 import { PriorityIcon } from './PriorityIcon'
 import { StatusPicker } from './StatusPicker'
+import { Subtasks } from './Subtasks'
+import { formatDateTime, timeAgo } from '../time'
 
 type Patch = Parameters<typeof api.updateStory>[1]
 
 const PRIORITIES: Priority[] = ['urgent', 'high', 'medium', 'low']
 const BACKLOG = '__backlog__'
-
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-}
-
-function timeAgo(iso: string) {
-  const secs = Math.round((Date.now() - new Date(iso).getTime()) / 1000)
-  if (secs < 60) return 'just now'
-  const mins = Math.round(secs / 60)
-  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`
-  const hours = Math.round(mins / 60)
-  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`
-  const days = Math.round(hours / 24)
-  if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`
-  return formatDateTime(iso)
-}
 
 export function StoryPanel({
   story,
@@ -48,7 +29,15 @@ export function StoryPanel({
   onAddUser,
   onDelete,
   onClose,
+  parent,
+  subtasks,
+  onCreateSubtask,
+  onOpenStory,
 }: {
+  parent: Story | null
+  subtasks: Story[]
+  onCreateSubtask: (title: string) => Promise<void>
+  onOpenStory: (id: string) => void
   story: Story
   project: Project
   sprints: Sprint[]
@@ -99,7 +88,8 @@ export function StoryPanel({
   ]
 
   async function remove() {
-    if (!window.confirm(`Delete ${story.key}? This can't be undone.`)) return
+    const extra = subtasks.length ? ` Its ${subtasks.length} subtask${subtasks.length === 1 ? '' : 's'} will be deleted too.` : ''
+    if (!window.confirm(`Delete ${story.key}?${extra} This can't be undone.`)) return
     await onDelete(story.id)
   }
 
@@ -107,20 +97,34 @@ export function StoryPanel({
     <aside className="story-panel" ref={panelRef} aria-label={`${story.key} details`}>
       <header className="panel-bar">
         <div className="panel-crumbs">
-          <span className="composer-type" title="Story">
-            <BookOpenCheck size={14} />
-          </span>
+          {parent ? (
+            <span className="subtask-type" title="Subtask">
+              <ListTree size={12} />
+            </span>
+          ) : (
+            <span className="composer-type" title="Story">
+              <BookOpenCheck size={14} />
+            </span>
+          )}
           <span>{project.name}</span>
           <span className="crumb-sep">/</span>
+          {parent && (
+            <>
+              <button type="button" className="crumb-link" onClick={() => onOpenStory(parent.id)} title={parent.title}>
+                {parent.key}
+              </button>
+              <span className="crumb-sep">/</span>
+            </>
+          )}
           <strong>{story.key}</strong>
         </div>
         <div className="panel-actions">
           <button
             type="button"
             className="row-icon-btn"
-            title="Copy key"
-            aria-label="Copy story key"
-            onClick={() => void navigator.clipboard?.writeText(story.key)}
+            title="Copy link"
+            aria-label="Copy link to story"
+            onClick={() => void navigator.clipboard?.writeText(window.location.href)}
           >
             <Link2 size={16} />
           </button>
@@ -153,6 +157,17 @@ export function StoryPanel({
             onSave={(description) => save({ description })}
           />
         </section>
+
+        {!parent && (
+          <Subtasks
+            subtasks={subtasks}
+            users={users}
+            onCreate={onCreateSubtask}
+            onOpen={onOpenStory}
+            onChange={(id, patch) => void onChange(id, patch)}
+            onAddUser={onAddUser}
+          />
+        )}
 
         <section className="details-card">
           <div className="details-head">
@@ -231,15 +246,24 @@ export function StoryPanel({
 
             <dt>Sprint</dt>
             <dd>
+              {parent ? (
+                <span className="field-static" title="Subtasks move with their parent">
+                  {sprints.find((s) => s.id === story.sprint_id)?.name ?? 'Backlog'}
+                  <span className="muted">· follows {parent.key}</span>
+                </span>
+              ) : (
               <MenuSelect
                 label="Sprint"
                 value={story.sprint_id ?? BACKLOG}
                 onChange={(v) => save({ sprint_id: v === BACKLOG ? null : v })}
                 options={sprintOptions}
               />
+              )}
             </dd>
           </dl>
         </section>
+
+        <BranchCard storyKey={story.key} title={story.title} labels={story.labels} />
 
         <div className="panel-meta">
           <span>Created {formatDateTime(story.created_at)}</span>
@@ -294,21 +318,41 @@ function PersonField({
 }
 
 function TitleEditor({ value, onSave }: { value: string; onSave: (title: string) => void }) {
+  const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
 
   function commit() {
     const title = draft.trim()
-    if (!title) setDraft(value)
-    else if (title !== value) onSave(title)
+    if (title && title !== value) onSave(title)
+    setEditing(false)
+  }
+
+  if (!editing) {
+    return (
+      <h2 className="panel-title-view">
+        <button
+          type="button"
+          onClick={() => {
+            setDraft(value)
+            setEditing(true)
+          }}
+          title="Click to edit"
+        >
+          {value}
+        </button>
+      </h2>
+    )
   }
 
   return (
     <textarea
       className="panel-title"
+      autoFocus
       value={draft}
-      rows={1}
+      rows={2}
       maxLength={300}
       aria-label="Title"
+      onFocus={(e) => e.currentTarget.select()}
       onChange={(e) => setDraft(e.target.value.replace(/\n/g, ''))}
       onBlur={commit}
       onKeyDown={(e) => {
@@ -317,8 +361,8 @@ function TitleEditor({ value, onSave }: { value: string; onSave: (title: string)
           e.currentTarget.blur()
         }
         if (e.key === 'Escape') {
-          setDraft(value)
-          e.currentTarget.blur()
+          e.stopPropagation()
+          setEditing(false)
         }
       }}
     />

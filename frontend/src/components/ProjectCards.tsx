@@ -1,5 +1,6 @@
 import { Plus } from 'lucide-react'
 import type { Project } from '../api'
+import { projectHref } from '../routes'
 
 export function ProjectCards({ projects, onCreate }: { projects: Project[]; onCreate: () => void }) {
   return (
@@ -11,7 +12,7 @@ export function ProjectCards({ projects, onCreate }: { projects: Project[]; onCr
         {projects.map((p) => {
           const pct = p.story_count ? Math.round((p.done_count / p.story_count) * 100) : 0
           return (
-            <a key={p.id} href={`#/projects/${p.id}`} className="project-card">
+            <a key={p.id} href={projectHref(p.id)} className="project-card">
               <div className="project-banner" style={{ background: p.color }} />
               <div className="project-body">
                 <h3>

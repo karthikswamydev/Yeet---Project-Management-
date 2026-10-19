@@ -1,4 +1,5 @@
 import type { Priority, Status } from './data'
+import type { Environment, Provider, ResourceStatus } from './resources'
 
 export type User = {
   id: string
@@ -35,6 +36,7 @@ export type Story = {
   sprint_id: string | null
   assignee_id: string | null
   reporter_id: string | null
+  parent_id: string | null
   key: string
   number: number
   title: string
@@ -54,6 +56,26 @@ export type Comment = {
   body: string
   created_at: string
 }
+
+export type Resource = {
+  id: string
+  project_id: string
+  name: string
+  provider: Provider
+  service: string
+  environment: Environment
+  region: string
+  identifier: string
+  url: string
+  monthly_cost: number | null
+  owner_id: string | null
+  status: ResourceStatus
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
+export type ResourceInput = Omit<Resource, 'id' | 'project_id' | 'created_at' | 'updated_at'>
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -104,6 +126,7 @@ export const api = {
       points?: number | null
       labels?: string[]
       assignee_id?: string | null
+      parent_id?: string | null
       sprint_id?: string | null
     },
   ) => request<Story>(`/projects/${projectId}/stories`, json('POST', body)),
@@ -117,4 +140,19 @@ export const api = {
   listComments: (storyId: string) => request<Comment[]>(`/stories/${storyId}/comments`),
   createComment: (storyId: string, body: string) =>
     request<Comment>(`/stories/${storyId}/comments`, json('POST', { body })),
+
+  listOrgStories: (params: { assignee?: string; order?: 'updated' | 'created'; limit?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (params.assignee) q.set('assignee', params.assignee)
+    if (params.order) q.set('order', params.order)
+    if (params.limit) q.set('limit', String(params.limit))
+    return request<Story[]>(`/stories?${q}`)
+  },
+  listOrgSprints: (status?: SprintStatus) => request<Sprint[]>(`/sprints${status ? `?status=${status}` : ''}`),
+
+  listResources: (projectId: string) => request<Resource[]>(`/projects/${projectId}/resources`),
+  createResource: (projectId: string, body: ResourceInput) =>
+    request<Resource>(`/projects/${projectId}/resources`, json('POST', body)),
+  updateResource: (id: string, body: Partial<ResourceInput>) => request<Resource>(`/resources/${id}`, json('PATCH', body)),
+  deleteResource: (id: string) => request<void>(`/resources/${id}`, { method: 'DELETE' }),
 }

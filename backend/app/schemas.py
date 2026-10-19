@@ -124,6 +124,8 @@ class StoryCreate(BaseModel):
     points: int | None = Field(default=None, ge=0, le=100)
     labels: list[str] = []
     assignee_id: uuid.UUID | None = None
+    # Makes this a subtask of that story; its sprint then follows the parent.
+    parent_id: uuid.UUID | None = None
     # Omit or null to put the story in the backlog.
     sprint_id: uuid.UUID | None = None
 
@@ -160,6 +162,7 @@ class StoryOut(BaseModel):
     sprint_id: uuid.UUID | None
     assignee_id: uuid.UUID | None
     reporter_id: uuid.UUID | None
+    parent_id: uuid.UUID | None
     key: str
     number: int
     title: str
@@ -191,3 +194,76 @@ class CommentOut(BaseModel):
     author_id: uuid.UUID | None
     body: str
     created_at: datetime
+
+
+Provider = Literal["aws", "gcp", "azure", "cloudflare", "vercel", "digitalocean", "other"]
+Environment = Literal["production", "staging", "development", "shared"]
+ResourceStatus = Literal["active", "planned", "retired"]
+
+
+def _clean_url(v: str | None) -> str | None:
+    if v is None:
+        return None
+    v = v.strip()
+    if v and not re.match(r"^https?://", v, re.IGNORECASE):
+        raise ValueError("Link must start with http:// or https://")
+    return v
+
+
+class ResourceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    provider: Provider
+    service: str = Field(min_length=1, max_length=60)
+    environment: Environment = "production"
+    region: str = Field(default="", max_length=50)
+    identifier: str = Field(default="", max_length=300)
+    url: str = Field(default="", max_length=500)
+    monthly_cost: float | None = Field(default=None, ge=0, le=99_999_999)
+    owner_id: uuid.UUID | None = None
+    status: ResourceStatus = "active"
+    notes: str = Field(default="", max_length=5000)
+
+    @field_validator("url")
+    @classmethod
+    def check_url(cls, v: str) -> str:
+        return _clean_url(v) or ""
+
+
+class ResourceUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    provider: Provider | None = None
+    service: str | None = Field(default=None, min_length=1, max_length=60)
+    environment: Environment | None = None
+    region: str | None = Field(default=None, max_length=50)
+    identifier: str | None = Field(default=None, max_length=300)
+    url: str | None = Field(default=None, max_length=500)
+    # null clears the cost / owner; omit to leave unchanged.
+    monthly_cost: float | None = Field(default=None, ge=0, le=99_999_999)
+    owner_id: uuid.UUID | None = None
+    status: ResourceStatus | None = None
+    notes: str | None = Field(default=None, max_length=5000)
+
+    @field_validator("url")
+    @classmethod
+    def check_url(cls, v: str | None) -> str | None:
+        return _clean_url(v)
+
+
+class ResourceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    name: str
+    provider: Provider
+    service: str
+    environment: Environment
+    region: str
+    identifier: str
+    url: str
+    monthly_cost: float | None
+    owner_id: uuid.UUID | None
+    status: ResourceStatus
+    notes: str
+    created_at: datetime
+    updated_at: datetime
