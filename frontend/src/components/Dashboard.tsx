@@ -73,7 +73,7 @@ export function Dashboard({
         <p className="subtitle">{today}</p>
       </div>
 
-      {error && <p className="form-error">{error}</p>}
+      {error && <p className="empty">Couldn&apos;t load this. Try refreshing the page.</p>}
 
       <div className="stats">
         {stats.map(({ icon: Icon, ...s }) => (

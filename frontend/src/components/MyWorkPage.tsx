@@ -40,7 +40,7 @@ export function MyWorkPage({ currentUserId, projects }: { currentUserId: string 
         </button>
       </div>
 
-      {error && <p className="form-error">{error}</p>}
+      {error && <p className="empty">Couldn&apos;t load this. Try refreshing the page.</p>}
       {stories === null && !error && <p className="empty">Loading…</p>}
 
       {stories !== null && list.length === 0 && (

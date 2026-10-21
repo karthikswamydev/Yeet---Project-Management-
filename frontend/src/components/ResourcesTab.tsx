@@ -14,6 +14,7 @@ import {
 import { Avatar } from './Avatar'
 import { FilterDropdown } from './FilterDropdown'
 import { ResourceModal } from './ResourceModal'
+import { confirm } from '../confirm'
 
 export function ProviderBadge({ provider }: { provider: Provider }) {
   const p = PROVIDERS[provider]
@@ -56,12 +57,19 @@ export function ResourcesTab({ projectId, users }: { projectId: string; users: U
   }
 
   async function remove(r: Resource) {
-    if (!window.confirm(`Remove "${r.name}" from this project's resources?`)) return
+    const ok = await confirm({
+      title: `Remove ${r.name}?`,
+      message:
+        "This only removes it from this project's list. It doesn't touch the actual resource in your cloud account.",
+      confirmLabel: 'Remove',
+      danger: true,
+    })
+    if (!ok) return
     try {
       await api.deleteResource(r.id)
       setResources((prev) => (prev ?? []).filter((x) => x.id !== r.id))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+    } catch {
+      // The API client already showed an error toast.
     }
   }
 
@@ -163,7 +171,7 @@ export function ResourcesTab({ projectId, users }: { projectId: string; users: U
         </button>
       </div>
 
-      {error && <p className="form-error">{error}</p>}
+      {error && <p className="empty">Couldn&apos;t load this. Try refreshing the page.</p>}
       {resources === null && !error && <p className="empty">Loading…</p>}
 
       {resources !== null && all.length === 0 && (

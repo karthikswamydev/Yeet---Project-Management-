@@ -9,17 +9,15 @@ export function CreateProjectModal({ onClose, onCreated }: { onClose: () => void
   const [key, setKey] = useState('')
   const [description, setDescription] = useState('')
   const [color, setColor] = useState(COLORS[0])
-  const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     setSaving(true)
-    setError(null)
     try {
       onCreated(await api.createProject({ name, key: key || undefined, description, color }))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+    } catch {
+      // The API client already showed an error toast.
       setSaving(false)
     }
   }
@@ -56,7 +54,6 @@ export function CreateProjectModal({ onClose, onCreated }: { onClose: () => void
             ))}
           </div>
         </div>
-        {error && <p className="form-error">{error}</p>}
         <div className="form-actions">
           <button type="button" className="btn" onClick={onClose}>
             Cancel

@@ -20,7 +20,6 @@ export function AssigneePicker({
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -44,12 +43,11 @@ export function AssigneePicker({
   }
 
   async function add() {
-    setError(null)
     try {
       const user = await onAddUser(q)
       pick(user.id)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+    } catch {
+      // The API client already showed an error toast.
     }
   }
 
@@ -123,7 +121,6 @@ export function AssigneePicker({
             )}
             {shown.length === 0 && !canAdd && q && <li className="label-empty">No matches</li>}
           </ul>
-          {error && <div className="label-note form-error">{error}</div>}
         </div>
       )}
     </div>

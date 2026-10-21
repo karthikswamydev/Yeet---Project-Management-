@@ -25,7 +25,6 @@ export function Subtasks({
   const [adding, setAdding] = useState(false)
   const [title, setTitle] = useState('')
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const done = subtasks.filter((s) => s.status === 'done').length
   const pct = subtasks.length ? Math.round((done / subtasks.length) * 100) : 0
@@ -34,12 +33,11 @@ export function Subtasks({
     e.preventDefault()
     if (!title.trim() || saving) return
     setSaving(true)
-    setError(null)
     try {
       await onCreate(title.trim())
       setTitle('')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+    } catch {
+      // The API client already showed an error toast.
     } finally {
       setSaving(false)
     }
@@ -134,13 +132,7 @@ export function Subtasks({
             </button>
           </form>
           <div className="composer-hint">
-            {error ? (
-              <span className="form-error">{error}</span>
-            ) : (
-              <>
-                <kbd>Enter</kbd> to add · <kbd>Esc</kbd> to close
-              </>
-            )}
+                            <kbd>Enter</kbd> to add · <kbd>Esc</kbd> to close
           </div>
         </>
       ) : (

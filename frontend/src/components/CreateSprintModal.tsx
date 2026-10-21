@@ -19,17 +19,15 @@ export function CreateSprintModal({
   const [goal, setGoal] = useState('')
   const [start, setStart] = useState(() => iso(new Date()))
   const [due, setDue] = useState(() => iso(new Date(Date.now() + 14 * 86_400_000)))
-  const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     setSaving(true)
-    setError(null)
     try {
       onCreated(await api.createSprint(projectId, { name, goal, start_date: start || null, due_date: due }))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+    } catch {
+      // The API client already showed an error toast.
       setSaving(false)
     }
   }
@@ -55,7 +53,6 @@ export function CreateSprintModal({
             <input type="date" required value={due} min={start || undefined} onChange={(e) => setDue(e.target.value)} />
           </label>
         </div>
-        {error && <p className="form-error">{error}</p>}
         <div className="form-actions">
           <button type="button" className="btn" onClick={onClose}>
             Cancel

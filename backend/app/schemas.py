@@ -194,6 +194,7 @@ class CommentOut(BaseModel):
     author_id: uuid.UUID | None
     body: str
     created_at: datetime
+    edited_at: datetime | None
 
 
 Provider = Literal["aws", "gcp", "azure", "cloudflare", "vercel", "digitalocean", "other"]

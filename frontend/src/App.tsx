@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, type Project } from './api'
+import { api, type Me, type Project } from './api'
+import { ConfirmHost } from './components/ConfirmHost'
 import { CreateProjectModal } from './components/CreateProjectModal'
 import { Dashboard } from './components/Dashboard'
 import { MyWorkPage } from './components/MyWorkPage'
 import { ProjectPage } from './components/ProjectPage'
 import { Sidebar } from './components/Sidebar'
+import { Toaster } from './components/Toaster'
 import { Topbar } from './components/Topbar'
 import { projectHref, storyHref, useRoute } from './routes'
-
-type Me = { id: string; email: string; name: string; org_id: string; role: string }
 
 function App() {
   const [me, setMe] = useState<Me | null>(null)
@@ -21,8 +21,8 @@ function App() {
   }, [])
 
   useEffect(() => {
-    fetch('/api/me')
-      .then((r) => r.json() as Promise<Me>)
+    api
+      .me()
       .then(setMe)
       .catch(() => setMe(null))
     refreshProjects()
@@ -76,6 +76,9 @@ function App() {
           }}
         />
       )}
+
+      <ConfirmHost />
+      <Toaster />
     </div>
   )
 }

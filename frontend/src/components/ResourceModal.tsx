@@ -42,7 +42,6 @@ export function ResourceModal({
 }) {
   const [form, setForm] = useState<ResourceInput>(() => (resource ? { ...resource } : EMPTY))
   const [cost, setCost] = useState(resource?.monthly_cost?.toString() ?? '')
-  const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   const set = <K extends keyof ResourceInput>(key: K, value: ResourceInput[K]) => setForm((f) => ({ ...f, [key]: value }))
@@ -50,11 +49,10 @@ export function ResourceModal({
   async function submit(e: FormEvent) {
     e.preventDefault()
     setSaving(true)
-    setError(null)
     try {
       await onSave({ ...form, monthly_cost: cost === '' ? null : Number(cost) })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+    } catch {
+      // The API client already showed an error toast.
       setSaving(false)
     }
   }
@@ -204,8 +202,6 @@ export function ResourceModal({
         <p className="secret-warning">
           <ShieldAlert size={14} /> Don't paste passwords, access keys or connection strings here.
         </p>
-
-        {error && <p className="form-error">{error}</p>}
         <div className="form-actions">
           <button type="button" className="btn" onClick={onClose}>
             Cancel

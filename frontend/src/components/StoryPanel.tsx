@@ -1,4 +1,4 @@
-import { BookOpenCheck, ChevronDown, Inbox, Link2, ListTree, Tag, Trash2, UserRound, X } from 'lucide-react'
+import { BookOpenCheck, ChevronDown, Inbox, Link2, ListTree, Pencil, Tag, Trash2, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api, type Comment, type Project, type Sprint, type Story, type User } from '../api'
 import type { Priority } from '../data'
@@ -12,6 +12,7 @@ import { PriorityIcon } from './PriorityIcon'
 import { StatusPicker } from './StatusPicker'
 import { Subtasks } from './Subtasks'
 import { formatDateTime, timeAgo } from '../time'
+import { confirm } from '../confirm'
 
 type Patch = Parameters<typeof api.updateStory>[1]
 
@@ -55,7 +56,7 @@ export function StoryPanel({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      if (panelRef.current?.querySelector('.label-picker')) return
+      if (panelRef.current?.querySelector('.label-picker') || document.querySelector('.confirm-dialog')) return
       const tag = (e.target as HTMLElement).tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
       onClose()
@@ -65,6 +66,8 @@ export function StoryPanel({
   }, [onClose])
 
   const save = (patch: Patch) => void onChange(story.id, patch)
+  const reporter = users.find((u) => u.id === story.reporter_id) ?? null
+  const currentSprint = sprints.find((s) => s.id === story.sprint_id) ?? null
 
   const sprintOptions = [
     {
@@ -89,7 +92,13 @@ export function StoryPanel({
 
   async function remove() {
     const extra = subtasks.length ? ` Its ${subtasks.length} subtask${subtasks.length === 1 ? '' : 's'} will be deleted too.` : ''
-    if (!window.confirm(`Delete ${story.key}?${extra} This can't be undone.`)) return
+    const ok = await confirm({
+      title: `Delete ${story.key}?`,
+      message: `"${story.title}" will be permanently deleted, along with its comments.${extra} This can't be undone.`,
+      confirmLabel: 'Delete story',
+      danger: true,
+    })
+    if (!ok) return
     await onDelete(story.id)
   }
 
@@ -138,15 +147,48 @@ export function StoryPanel({
       </header>
 
       <div className="panel-scroll">
-        <TitleEditor key={`t-${story.id}`} value={story.title} onSave={(title) => save({ title })} />
+        <div className="panel-hero">
+          <div className="panel-kicker">
+            <span className={parent ? 'kicker-type subtask' : 'kicker-type'}>{parent ? 'Subtask' : 'Story'}</span>
+            <span className="kicker-dot" aria-hidden="true" />
+            <span>{story.key}</span>
+            <span className="kicker-dot" aria-hidden="true" />
+            <span title={formatDateTime(story.created_at)}>
+              Created {timeAgo(story.created_at)}
+              {reporter && ` by ${reporter.name}`}
+            </span>
+          </div>
 
-        <div className="panel-status-row">
-          <StatusPicker
-            value={story.status}
-            onChange={(status) => save({ status })}
-            align="left"
-            className="status-trigger-lg"
-          />
+          <TitleEditor key={`t-${story.id}`} value={story.title} onSave={(title) => save({ title })} />
+
+          <div className="panel-status-row">
+            <StatusPicker
+              value={story.status}
+              onChange={(status) => save({ status })}
+              align="left"
+              className="status-trigger-lg"
+            />
+            <span className="fact-chip" title="Priority">
+              <PriorityIcon priority={story.priority} />
+              <span className="cap">{story.priority}</span>
+            </span>
+            {story.points !== null && (
+              <span className="fact-chip" title="Story points">
+                {story.points} pts
+              </span>
+            )}
+            <span className="fact-chip" title="Sprint">
+              {currentSprint ? (
+                <>
+                  <span className={`sprint-dot sprint-dot-${currentSprint.status}`} /> {currentSprint.name}
+                </>
+              ) : (
+                <>
+                  <Inbox size={13} /> Backlog
+                </>
+              )}
+            </span>
+          </div>
         </div>
 
         <section className="panel-section">
@@ -339,6 +381,7 @@ function TitleEditor({ value, onSave }: { value: string; onSave: (title: string)
           title="Click to edit"
         >
           {value}
+          <Pencil size={16} className="title-pencil" aria-hidden="true" />
         </button>
       </h2>
     )
@@ -477,13 +520,12 @@ function Comments({
   async function submit() {
     if (!draft.trim() || saving) return
     setSaving(true)
-    setError(null)
     try {
       const comment = await api.createComment(storyId, draft)
       setComments((prev) => [...(prev ?? []), comment])
       setDraft('')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+    } catch {
+      // The API client already showed an error toast.
     } finally {
       setSaving(false)
     }
@@ -522,25 +564,144 @@ function Comments({
           )}
         </div>
       </div>
-      {error && <p className="form-error">{error}</p>}
+      {error && <p className="muted">Couldn&apos;t load comments.</p>}
       {comments === null && !error && <p className="muted">Loading comments…</p>}
       <ul className="comment-list">
-        {[...(comments ?? [])].reverse().map((c) => {
-          const author = users.find((u) => u.id === c.author_id)
-          return (
-            <li key={c.id}>
-              <Avatar name={author?.name ?? 'Unknown'} size={32} />
-              <div>
-                <div className="comment-head">
-                  <strong>{author?.name ?? 'Unknown user'}</strong>
-                  <span title={formatDateTime(c.created_at)}>{timeAgo(c.created_at)}</span>
-                </div>
-                <p className="comment-body">{c.body}</p>
-              </div>
-            </li>
-          )
-        })}
+        {[...(comments ?? [])].reverse().map((c) => (
+          <CommentItem
+            key={c.id}
+            comment={c}
+            author={users.find((u) => u.id === c.author_id)}
+            canEdit={c.author_id !== null && c.author_id === currentUserId}
+            onSaved={(updated) => setComments((prev) => (prev ?? []).map((x) => (x.id === updated.id ? updated : x)))}
+            onDeleted={(id) => setComments((prev) => (prev ?? []).filter((x) => x.id !== id))}
+          />
+        ))}
       </ul>
     </section>
+  )
+}
+
+function CommentItem({
+  comment,
+  author,
+  canEdit,
+  onSaved,
+  onDeleted,
+}: {
+  comment: Comment
+  author: User | undefined
+  canEdit: boolean
+  onSaved: (c: Comment) => void
+  onDeleted: (id: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(comment.body)
+  const [busy, setBusy] = useState(false)
+
+  async function save() {
+    if (!draft.trim() || busy) return
+    if (draft.trim() === comment.body) return setEditing(false)
+    setBusy(true)
+    try {
+      onSaved(await api.updateComment(comment.id, draft))
+      setEditing(false)
+    } catch {
+      // The API client already showed an error toast.
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove() {
+    const ok = await confirm({
+      title: 'Delete this comment?',
+      message: "Once it's deleted, it's gone for good.",
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!ok) return
+    setBusy(true)
+    try {
+      await api.deleteComment(comment.id)
+      onDeleted(comment.id)
+    } catch {
+      // The API client already showed an error toast.
+      setBusy(false)
+    }
+  }
+
+  return (
+    <li>
+      <Avatar name={author?.name ?? 'Unknown'} size={32} />
+      <div className="comment-main">
+        <div className="comment-head">
+          <strong>{author?.name ?? 'Unknown user'}</strong>
+          <span title={formatDateTime(comment.created_at)}>{timeAgo(comment.created_at)}</span>
+          {comment.edited_at && (
+            <span className="comment-edited" title={`Edited ${formatDateTime(comment.edited_at)}`}>
+              (edited)
+            </span>
+          )}
+        </div>
+        {editing ? (
+          <div className="comment-box">
+            <textarea
+              autoFocus
+              rows={3}
+              value={draft}
+              aria-label="Edit comment"
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void save()
+                if (e.key === 'Escape') {
+                  e.stopPropagation()
+                  setDraft(comment.body)
+                  setEditing(false)
+                }
+              }}
+            />
+            <div className="form-actions start">
+              <button type="button" className="btn primary" disabled={busy || !draft.trim()} onClick={() => void save()}>
+                Save
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setDraft(comment.body)
+                  setEditing(false)
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="comment-body">{comment.body}</p>
+            {canEdit && (
+              <div className="comment-actions">
+                <button
+                  type="button"
+                  className="comment-action"
+                  disabled={busy}
+                  onClick={() => {
+                    setDraft(comment.body)
+                    setEditing(true)
+                  }}
+                >
+                  Edit
+                </button>
+                <span aria-hidden="true">·</span>
+                <button type="button" className="comment-action" disabled={busy} onClick={() => void remove()}>
+                  Delete
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </li>
   )
 }

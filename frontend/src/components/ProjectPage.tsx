@@ -38,7 +38,7 @@ export function ProjectPage({
   const [sprints, setSprints] = useState<Sprint[]>([])
   const [stories, setStories] = useState<Story[]>([])
   const [users, setUsers] = useState<User[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [showSprintModal, setShowSprintModal] = useState(false)
   const [labelFilter, setLabelFilter] = useState<string[]>([])
   const [statusFilter, setStatusFilter] = useState<Status[]>([])
@@ -56,9 +56,9 @@ export function ProjectPage({
       setSprints(sp)
       setStories(st)
       setUsers(us)
-      setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setLoadFailed(false)
+    } catch {
+      setLoadFailed(true)
     }
   }, [projectId])
 
@@ -99,8 +99,8 @@ export function ProjectPage({
         }),
       )
       onChanged()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+    } catch {
+      // The API client already showed an error toast.
     }
   }
 
@@ -110,8 +110,8 @@ export function ProjectPage({
       setStories((prev) => prev.filter((s) => s.id !== id && s.parent_id !== id))
       onSelectStory(null)
       onChanged()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+    } catch {
+      // The API client already showed an error toast.
     }
   }
 
@@ -119,12 +119,12 @@ export function ProjectPage({
     try {
       const updated = await api.updateSprint(id, { status })
       setSprints((prev) => prev.map((s) => (s.id === id ? updated : s)))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+    } catch {
+      // The API client already showed an error toast.
     }
   }
 
-  if (error && !project) return <p className="form-error">{error}</p>
+  if (loadFailed && !project) return <p className="empty">Couldn&apos;t load this project. Try refreshing the page.</p>
   if (!project) return <p className="empty">Loading…</p>
 
   const allLabels = [...new Map(stories.flatMap((s) => s.labels).map((l) => [l.toLowerCase(), l])).values()].sort(
@@ -197,7 +197,6 @@ export function ProjectPage({
         </a>
       </nav>
 
-      {error && <p className="form-error">{error}</p>}
 
       {tab === 'resources' && <ResourcesTab projectId={projectId} users={users} />}
 

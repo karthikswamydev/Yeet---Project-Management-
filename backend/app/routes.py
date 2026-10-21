@@ -339,6 +339,39 @@ def list_org_sprints(db: DB, user: User, status: schemas.SprintStatus | None = N
 
 
 
+
+def _get_comment(db: Session, user: CurrentUser, comment_id: uuid.UUID) -> models.StoryComment:
+    comment = db.scalar(
+        select(models.StoryComment).where(
+            models.StoryComment.id == comment_id, models.StoryComment.org_id == user.org_id
+        )
+    )
+    if comment is None:
+        raise HTTPException(404, "Comment not found")
+    return comment
+
+
+@router.patch("/comments/{comment_id}")
+def update_comment(comment_id: uuid.UUID, body: schemas.CommentCreate, db: DB, user: User) -> schemas.CommentOut:
+    comment = _get_comment(db, user, comment_id)
+    if comment.author_id != user.id:
+        raise HTTPException(403, "You can only edit your own comments")
+    if body.body != comment.body:
+        comment.body = body.body
+        comment.edited_at = func.now()
+    db.commit()
+    return comment
+
+
+@router.delete("/comments/{comment_id}", status_code=204)
+def delete_comment(comment_id: uuid.UUID, db: DB, user: User) -> Response:
+    comment = _get_comment(db, user, comment_id)
+    if comment.author_id != user.id and user.role != "admin":
+        raise HTTPException(403, "You can only delete your own comments")
+    db.delete(comment)
+    db.commit()
+    return Response(status_code=204)
+
 # -- project resources (cloud inventory) ----------------------------------------
 
 

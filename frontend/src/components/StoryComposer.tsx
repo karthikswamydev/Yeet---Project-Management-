@@ -36,19 +36,17 @@ export function StoryComposer({
   const [labels, setLabels] = useState<string[]>([])
   const [assigneeId, setAssigneeId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!title.trim() || saving) return
     setSaving(true)
-    setError(null)
     try {
       await onCreate({ title: title.trim(), priority, points: points === '' ? null : Number(points), labels, assignee_id: assigneeId })
       setTitle('')
       setPoints('')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+    } catch {
+      // The API client already showed an error toast.
     } finally {
       setSaving(false)
     }
@@ -56,7 +54,6 @@ export function StoryComposer({
 
   function close() {
     setOpen(false)
-    setError(null)
   }
 
   if (!open) {
@@ -148,13 +145,7 @@ export function StoryComposer({
         </button>
       </form>
       <div className="composer-hint">
-        {error ? (
-          <span className="form-error">{error}</span>
-        ) : (
-          <>
-            <kbd>Enter</kbd> to add · <kbd>Esc</kbd> to close
-          </>
-        )}
+                    <kbd>Enter</kbd> to add · <kbd>Esc</kbd> to close
       </div>
     </>
   )
