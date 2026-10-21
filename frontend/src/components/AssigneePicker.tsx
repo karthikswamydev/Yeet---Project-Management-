@@ -14,7 +14,8 @@ export function AssigneePicker({
   value: string | null
   users: User[]
   onChange: (userId: string | null) => void
-  onAddUser: (name: string) => Promise<User>
+  // Only admins can add people, so this is omitted for everyone else.
+  onAddUser?: (name: string) => Promise<User>
   trigger: (open: () => void, assignee: User | null) => ReactNode
   align?: 'left' | 'right'
 }) {
@@ -34,7 +35,7 @@ export function AssigneePicker({
   const assignee = users.find((u) => u.id === value) ?? null
   const q = query.trim()
   const shown = users.filter((u) => `${u.name} ${u.email ?? ''}`.toLowerCase().includes(q.toLowerCase()))
-  const canAdd = q !== '' && !users.some((u) => u.name.toLowerCase() === q.toLowerCase())
+  const canAdd = !!onAddUser && q !== '' && !users.some((u) => u.name.toLowerCase() === q.toLowerCase())
 
   function pick(id: string | null) {
     onChange(id)
@@ -44,6 +45,7 @@ export function AssigneePicker({
 
   async function add() {
     try {
+      if (!onAddUser) return
       const user = await onAddUser(q)
       pick(user.id)
     } catch {

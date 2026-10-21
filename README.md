@@ -61,6 +61,28 @@ def list_projects(user: Annotated[CurrentUser, Depends(get_current_user)], db: A
 
 When an auth provider is picked (see `research/auth-options.md` in the project), only `get_current_user()` changes: it will verify the bearer JWT against the provider's JWKS and read the user, org and role from the claims.
 
+To try the app as someone else, send their user id in an `X-Dev-User` header (for example from the API docs or curl). You get their org role and project roles.
+
+## Sign-in
+
+Sign-in uses Stytch B2B (email magic links). Settings live in `.env` (copy `.env.example`):
+
+- `AUTH_MODE=stytch`: the frontend shows Stytch's sign-in form; after the emailed link, people pick or create their workspace. Every API call carries the Stytch session (the `stytch_session_jwt` cookie, or `Authorization: Bearer …`), verified against Stytch's JWKS. People and workspaces are created on first sign-in, and someone an admin pre-added by email is linked to that record. Org roles come from Stytch roles (`stytch_admin`/`admin` = admin, `guest` = guest, otherwise member), so change org roles in Stytch.
+  - Needs `STYTCH_PROJECT_ID` and `STYTCH_PUBLIC_TOKEN` (neither is secret). Never put the Stytch secret in this repo.
+  - In the Stytch dashboard: authorize `http://localhost:5173` for the frontend SDK, and add `http://localhost:5173/authenticate` as a redirect URL.
+- `AUTH_MODE=dev`: no login; you're the seeded admin and can **View as** anyone from the user menu. Anyone who can reach the API can act as anyone, so the backend refuses to start in this mode unless `APP_ENV=local`.
+
+Docker only listens on `127.0.0.1`. After changing `.env`, run `docker compose up -d`. After adding npm packages, rebuild with `docker compose up -d --build -V` (the `-V` refreshes the container's `node_modules`).
+
+## Roles
+
+Each person has an org role in `users.org_role` and a role in each project they belong to, stored in `project_members`. The full plan is in `research/roles-and-permissions.md` in the project.
+
+- **Org roles:** `admin` can do everything, including in private projects. `member` can read open projects and create projects. `guest` only sees projects they've been added to.
+- **Project roles:** `scrum_master` runs sprints, members, resources and project settings. `contributor` creates and edits stories. `viewer` reads and comments.
+
+In a route, check access with `_get_project(db, user, project_id, need)`. Here `need` is `"reader"` (the default), `"viewer"`, `"contributor"` or `"scrum_master"`. It returns 404 for projects the caller can't see and 403 when their role is too low. Use `_visible_project_ids(user)` to filter cross-project lists.
+
 ## Multi-tenancy
 
 Every tenant-owned table should use `TenantMixin` (in `models.py`), which adds an indexed `org_id` foreign key to `organizations`. Always filter by `user.org_id`.

@@ -1,7 +1,7 @@
 import { CornerDownLeft, ListTree, Plus, UserRound } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import type { Story, User } from '../api'
-import type { Status } from '../data'
+import { STATUS_LABEL, type Status } from '../data'
 import { AssigneePicker } from './AssigneePicker'
 import { Avatar } from './Avatar'
 import { PriorityIcon } from './PriorityIcon'
@@ -14,13 +14,16 @@ export function Subtasks({
   onOpen,
   onChange,
   onAddUser,
+  readOnly = false,
 }: {
+  readOnly?: boolean
   subtasks: Story[]
   users: User[]
   onCreate: (title: string) => Promise<void>
   onOpen: (id: string) => void
   onChange: (id: string, patch: { status?: Status; assignee_id?: string | null }) => void
-  onAddUser: (name: string) => Promise<User>
+  // Only admins can add people, so this is omitted for everyone else.
+  onAddUser?: (name: string) => Promise<User>
 }) {
   const [adding, setAdding] = useState(false)
   const [title, setTitle] = useState('')
@@ -55,7 +58,7 @@ export function Subtasks({
             {pct}% done
           </span>
         )}
-        {!adding && (
+        {!adding && !readOnly && (
           <button type="button" className="row-icon-btn" aria-label="Add subtask" title="Add subtask" onClick={() => setAdding(true)}>
             <Plus size={16} />
           </button>
@@ -74,6 +77,17 @@ export function Subtasks({
                 <span className="task-title">{s.title}</span>
               </button>
               <PriorityIcon priority={s.priority} />
+              {readOnly ? (
+                <span className="assignee-trigger" title={users.find((u) => u.id === s.assignee_id)?.name ?? 'Unassigned'}>
+                  {users.find((u) => u.id === s.assignee_id) ? (
+                    <Avatar name={users.find((u) => u.id === s.assignee_id)!.name} size={24} />
+                  ) : (
+                    <span className="avatar-empty">
+                      <UserRound size={14} />
+                    </span>
+                  )}
+                </span>
+              ) : (
               <AssigneePicker
                 value={s.assignee_id}
                 users={users}
@@ -97,7 +111,12 @@ export function Subtasks({
                   </button>
                 )}
               />
-              <StatusPicker value={s.status} onChange={(status) => onChange(s.id, { status })} />
+              )}
+              {readOnly ? (
+                <span className={`pill status-${s.status}`}>{STATUS_LABEL[s.status]}</span>
+              ) : (
+                <StatusPicker value={s.status} onChange={(status) => onChange(s.id, { status })} />
+              )}
             </li>
           ))}
         </ul>
@@ -135,6 +154,8 @@ export function Subtasks({
                             <kbd>Enter</kbd> to add · <kbd>Esc</kbd> to close
           </div>
         </>
+      ) : readOnly ? (
+        subtasks.length === 0 && <p className="muted">No subtasks.</p>
       ) : (
         subtasks.length === 0 && (
           <button type="button" className="add-story" onClick={() => setAdding(true)}>

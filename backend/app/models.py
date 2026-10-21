@@ -12,6 +12,8 @@ class Organization(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(200))
+    # The auth provider's organization id (e.g. a Stytch organization_id). NULL for the dev org.
+    auth_org_id: Mapped[str | None] = mapped_column(String(200), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -39,6 +41,10 @@ class User(TenantMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(200))
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    # admin | member | guest. Mirrors the auth provider's role once real login lands.
+    org_role: Mapped[str] = mapped_column(String(20), default="member", server_default="member")
+    # The auth provider's id for this person (e.g. a Stytch member id). NULL until they first sign in.
+    auth_id: Mapped[str | None] = mapped_column(String(200), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (UniqueConstraint("org_id", "email", name="uq_user_org_email"),)
@@ -53,8 +59,26 @@ class Project(TenantMixin, Base):
     key: Mapped[str] = mapped_column(String(10))
     description: Mapped[str] = mapped_column(Text, default="")
     color: Mapped[str] = mapped_column(String(9), default="#0047ab")
+    # open: every org member can read it | private: only its members can see it
+    visibility: Mapped[str] = mapped_column(String(10), default="open", server_default="open")
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (UniqueConstraint("org_id", "key", name="uq_project_org_key"),)
+
+
+class ProjectMember(TenantMixin, Base):
+    """Someone's role in one project. Org admins don't need a row: they can do everything."""
+
+    __tablename__ = "project_members"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    # scrum_master | contributor | viewer
+    role: Mapped[str] = mapped_column(String(20), default="contributor")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("project_id", "user_id", name="uq_project_member"),)
 
 
 class Sprint(TenantMixin, Base):

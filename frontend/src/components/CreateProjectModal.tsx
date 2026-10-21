@@ -1,5 +1,6 @@
+import { Globe, Lock } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { api, type Project } from '../api'
+import { api, type Project, type Visibility } from '../api'
 import { Modal } from './Modal'
 
 const COLORS = ['#0047ab', '#7c3aed', '#0ea5e9', '#059669', '#ea580c', '#475569']
@@ -9,13 +10,14 @@ export function CreateProjectModal({ onClose, onCreated }: { onClose: () => void
   const [key, setKey] = useState('')
   const [description, setDescription] = useState('')
   const [color, setColor] = useState(COLORS[0])
+  const [visibility, setVisibility] = useState<Visibility>('open')
   const [saving, setSaving] = useState(false)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     setSaving(true)
     try {
-      onCreated(await api.createProject({ name, key: key || undefined, description, color }))
+      onCreated(await api.createProject({ name, key: key || undefined, description, color, visibility }))
     } catch {
       // The API client already showed an error toast.
       setSaving(false)
@@ -53,6 +55,38 @@ export function CreateProjectModal({ onClose, onCreated }: { onClose: () => void
               />
             ))}
           </div>
+        </div>
+        <div className="field">
+          <span className="field-label">Visibility</span>
+          <div className="choice-grid compact" role="radiogroup" aria-label="Visibility">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={visibility === 'open'}
+              className={visibility === 'open' ? 'choice active' : 'choice'}
+              onClick={() => setVisibility('open')}
+            >
+              <Globe size={16} />
+              <span>
+                <strong>Open</strong>
+                <span>Everyone in the workspace can read it</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={visibility === 'private'}
+              className={visibility === 'private' ? 'choice active' : 'choice'}
+              onClick={() => setVisibility('private')}
+            >
+              <Lock size={16} />
+              <span>
+                <strong>Private</strong>
+                <span>Only people you add</span>
+              </span>
+            </button>
+          </div>
+          <span className="field-help">You&apos;ll be the scrum master. Add people from the project&apos;s Settings tab.</span>
         </div>
         <div className="form-actions">
           <button type="button" className="btn" onClick={onClose}>

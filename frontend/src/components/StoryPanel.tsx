@@ -13,6 +13,8 @@ import { StatusPicker } from './StatusPicker'
 import { Subtasks } from './Subtasks'
 import { formatDateTime, timeAgo } from '../time'
 import { confirm } from '../confirm'
+import type { ProjectPermissions } from '../auth'
+import { STATUS_LABEL } from '../data'
 
 type Patch = Parameters<typeof api.updateStory>[1]
 
@@ -34,7 +36,9 @@ export function StoryPanel({
   subtasks,
   onCreateSubtask,
   onOpenStory,
+  perms,
 }: {
+  perms: ProjectPermissions
   parent: Story | null
   subtasks: Story[]
   onCreateSubtask: (title: string) => Promise<void>
@@ -46,7 +50,8 @@ export function StoryPanel({
   allLabels: string[]
   currentUserId: string | null
   onChange: (id: string, patch: Patch) => Promise<void>
-  onAddUser: (name: string) => Promise<User>
+  // Only admins can add people, so this is omitted for everyone else.
+  onAddUser?: (name: string) => Promise<User>
   onDelete: (id: string) => Promise<void>
   onClose: () => void
 }) {
@@ -137,9 +142,11 @@ export function StoryPanel({
           >
             <Link2 size={16} />
           </button>
-          <button type="button" className="row-icon-btn danger" title="Delete" aria-label="Delete story" onClick={remove}>
-            <Trash2 size={16} />
-          </button>
+          {perms.canDeleteStory(story.reporter_id) && (
+            <button type="button" className="row-icon-btn danger" title="Delete" aria-label="Delete story" onClick={remove}>
+              <Trash2 size={16} />
+            </button>
+          )}
           <button type="button" className="row-icon-btn" title="Close (Esc)" aria-label="Close" onClick={onClose}>
             <X size={18} />
           </button>
@@ -159,15 +166,25 @@ export function StoryPanel({
             </span>
           </div>
 
-          <TitleEditor key={`t-${story.id}`} value={story.title} onSave={(title) => save({ title })} />
+          {perms.canEditWork ? (
+            <TitleEditor key={`t-${story.id}`} value={story.title} onSave={(title) => save({ title })} />
+          ) : (
+            <h2 className="panel-title-view">
+              <span className="title-static">{story.title}</span>
+            </h2>
+          )}
 
           <div className="panel-status-row">
-            <StatusPicker
-              value={story.status}
-              onChange={(status) => save({ status })}
-              align="left"
-              className="status-trigger-lg"
-            />
+            {perms.canEditWork ? (
+              <StatusPicker
+                value={story.status}
+                onChange={(status) => save({ status })}
+                align="left"
+                className="status-trigger-lg"
+              />
+            ) : (
+              <span className={`pill status-${story.status} status-static-lg`}>{STATUS_LABEL[story.status]}</span>
+            )}
             <span className="fact-chip" title="Priority">
               <PriorityIcon priority={story.priority} />
               <span className="cap">{story.priority}</span>
@@ -193,11 +210,17 @@ export function StoryPanel({
 
         <section className="panel-section">
           <h3 className="panel-h">Description</h3>
-          <DescriptionEditor
-            key={`d-${story.id}`}
-            value={story.description}
-            onSave={(description) => save({ description })}
-          />
+          {perms.canEditWork ? (
+            <DescriptionEditor
+              key={`d-${story.id}`}
+              value={story.description}
+              onSave={(description) => save({ description })}
+            />
+          ) : (
+            <p className={story.description ? 'description-static' : 'description-static is-empty'}>
+              {story.description || 'No description.'}
+            </p>
+          )}
         </section>
 
         {!parent && (
@@ -208,6 +231,7 @@ export function StoryPanel({
             onOpen={onOpenStory}
             onChange={(id, patch) => void onChange(id, patch)}
             onAddUser={onAddUser}
+            readOnly={!perms.canEditWork}
           />
         )}
 
@@ -215,6 +239,9 @@ export function StoryPanel({
           <div className="details-head">
             Details <ChevronDown size={14} />
           </div>
+          {!perms.canEditWork ? (
+            <ReadOnlyDetails story={story} users={users} sprints={sprints} parent={parent} />
+          ) : (
           <dl className="details-grid">
             <dt>Assignee</dt>
             <dd>
@@ -303,6 +330,7 @@ export function StoryPanel({
               )}
             </dd>
           </dl>
+          )}
         </section>
 
         <BranchCard storyKey={story.key} title={story.title} labels={story.labels} />
@@ -312,7 +340,14 @@ export function StoryPanel({
           <span>Updated {timeAgo(story.updated_at)}</span>
         </div>
 
-        <Comments key={`c-${story.id}`} storyId={story.id} users={users} currentUserId={currentUserId} />
+        <Comments
+          key={`c-${story.id}`}
+          storyId={story.id}
+          users={users}
+          currentUserId={currentUserId}
+          canComment={perms.canComment}
+          canDeleteComment={perms.canDeleteComment}
+        />
       </div>
     </aside>
   )
@@ -328,7 +363,8 @@ function PersonField({
   emptyText?: string
   value: string | null
   users: User[]
-  onAddUser: (name: string) => Promise<User>
+  // Only admins can add people, so this is omitted for everyone else.
+  onAddUser?: (name: string) => Promise<User>
   onChange: (id: string | null) => void
 }) {
   return (
@@ -496,10 +532,14 @@ function Comments({
   storyId,
   users,
   currentUserId,
+  canComment,
+  canDeleteComment,
 }: {
   storyId: string
   users: User[]
   currentUserId: string | null
+  canComment: boolean
+  canDeleteComment: (authorId: string | null) => boolean
 }) {
   const [comments, setComments] = useState<Comment[] | null>(null)
   const [draft, setDraft] = useState('')
@@ -536,6 +576,7 @@ function Comments({
   return (
     <section className="panel-section">
       <h3 className="panel-h">Activity</h3>
+      {canComment ? (
       <div className="comment-new">
         <Avatar name={me?.name ?? 'You'} size={32} />
         <div className="comment-box">
@@ -564,6 +605,9 @@ function Comments({
           )}
         </div>
       </div>
+      ) : (
+        <p className="muted comment-locked">Join this project to comment.</p>
+      )}
       {error && <p className="muted">Couldn&apos;t load comments.</p>}
       {comments === null && !error && <p className="muted">Loading comments…</p>}
       <ul className="comment-list">
@@ -572,7 +616,8 @@ function Comments({
             key={c.id}
             comment={c}
             author={users.find((u) => u.id === c.author_id)}
-            canEdit={c.author_id !== null && c.author_id === currentUserId}
+            canEdit={c.author_id !== null && c.author_id === currentUserId && canComment}
+            canDelete={canDeleteComment(c.author_id)}
             onSaved={(updated) => setComments((prev) => (prev ?? []).map((x) => (x.id === updated.id ? updated : x)))}
             onDeleted={(id) => setComments((prev) => (prev ?? []).filter((x) => x.id !== id))}
           />
@@ -586,12 +631,14 @@ function CommentItem({
   comment,
   author,
   canEdit,
+  canDelete,
   onSaved,
   onDeleted,
 }: {
   comment: Comment
   author: User | undefined
   canEdit: boolean
+  canDelete: boolean
   onSaved: (c: Comment) => void
   onDeleted: (id: string) => void
 }) {
@@ -680,28 +727,89 @@ function CommentItem({
         ) : (
           <>
             <p className="comment-body">{comment.body}</p>
-            {canEdit && (
+            {(canEdit || canDelete) && (
               <div className="comment-actions">
-                <button
-                  type="button"
-                  className="comment-action"
-                  disabled={busy}
-                  onClick={() => {
-                    setDraft(comment.body)
-                    setEditing(true)
-                  }}
-                >
-                  Edit
-                </button>
-                <span aria-hidden="true">·</span>
-                <button type="button" className="comment-action" disabled={busy} onClick={() => void remove()}>
-                  Delete
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    className="comment-action"
+                    disabled={busy}
+                    onClick={() => {
+                      setDraft(comment.body)
+                      setEditing(true)
+                    }}
+                  >
+                    Edit
+                  </button>
+                )}
+                {canEdit && canDelete && <span aria-hidden="true">·</span>}
+                {canDelete && (
+                  <button type="button" className="comment-action" disabled={busy} onClick={() => void remove()}>
+                    Delete
+                  </button>
+                )}
               </div>
             )}
           </>
         )}
       </div>
     </li>
+  )
+}
+
+function ReadOnlyDetails({
+  story,
+  users,
+  sprints,
+  parent,
+}: {
+  story: Story
+  users: User[]
+  sprints: Sprint[]
+  parent: Story | null
+}) {
+  const person = (id: string | null, empty: string) => {
+    const u = users.find((x) => x.id === id)
+    return u ? (
+      <span className="field-static">
+        <Avatar name={u.name} size={24} /> {u.name}
+      </span>
+    ) : (
+      <span className="field-static field-empty">{empty}</span>
+    )
+  }
+  const sprint = sprints.find((s) => s.id === story.sprint_id)
+  return (
+    <dl className="details-grid">
+      <dt>Assignee</dt>
+      <dd>{person(story.assignee_id, 'Unassigned')}</dd>
+      <dt>Reporter</dt>
+      <dd>{person(story.reporter_id, 'None')}</dd>
+      <dt>Labels</dt>
+      <dd>
+        {story.labels.length ? (
+          story.labels.map((l) => <LabelChip key={l} label={l} />)
+        ) : (
+          <span className="field-static field-empty">None</span>
+        )}
+      </dd>
+      <dt>Priority</dt>
+      <dd>
+        <span className="field-static">
+          <PriorityIcon priority={story.priority} /> <span className="cap">{story.priority}</span>
+        </span>
+      </dd>
+      <dt>Story points</dt>
+      <dd>
+        <span className={story.points === null ? 'field-static field-empty' : 'field-static'}>{story.points ?? 'None'}</span>
+      </dd>
+      <dt>Sprint</dt>
+      <dd>
+        <span className="field-static">
+          {sprint ? sprint.name : 'Backlog'}
+          {parent && <span className="muted">· follows {parent.key}</span>}
+        </span>
+      </dd>
+    </dl>
   )
 }

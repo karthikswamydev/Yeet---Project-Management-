@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronRight, CircleCheckBig, CircleDot, Cloud, ListChecks, Play, Plus, Tag, Target } from 'lucide-react'
+import { Archive, CalendarDays, ChevronRight, CircleCheckBig, CircleDot, Cloud, Eye, ListChecks, Lock, Play, Plus, Settings, Tag, Target } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { api, type Project, type Sprint, type SprintStatus, type Story, type User } from '../api'
 import { BOARD_COLUMNS, STATUS_LABEL, type Priority, type Status } from '../data'
@@ -6,7 +6,10 @@ import { CreateSprintModal } from './CreateSprintModal'
 import { AssigneeFilter, UNASSIGNED } from './AssigneeFilter'
 import { FilterDropdown } from './FilterDropdown'
 import { LabelChip } from './Label'
-import { projectHref, resourcesHref, type ProjectTab } from '../routes'
+import { projectHref, resourcesHref, settingsHref, type ProjectTab } from '../routes'
+import { projectPermissions, useAuth } from '../auth'
+import { PROJECT_ROLE_LABEL } from '../api'
+import { ProjectSettings } from './ProjectSettings'
 import { ResourcesTab } from './ResourcesTab'
 import { StoryComposer } from './StoryComposer'
 import { StoryPanel } from './StoryPanel'
@@ -34,6 +37,7 @@ export function ProjectPage({
   currentUserId: string | null
   onChanged: () => void
 }) {
+  const { me, mode } = useAuth()
   const [project, setProject] = useState<Project | null>(null)
   const [sprints, setSprints] = useState<Sprint[]>([])
   const [stories, setStories] = useState<Story[]>([])
@@ -152,6 +156,9 @@ export function ProjectPage({
   const topLevel = visible.filter((s) => !s.parent_id)
   const backlog = topLevel.filter((s) => s.sprint_id === null)
   const selected = stories.find((s) => s.id === storyId) ?? null
+  const perms = projectPermissions(me, project)
+  // Quick-add is dev only: with real sign-in, people must be invited from People & roles.
+  const addUserIfAdmin = me?.role === 'admin' && mode === 'dev' ? addUser : undefined
   const pct = project.story_count ? Math.round((project.done_count / project.story_count) * 100) : 0
 
   return (
@@ -181,7 +188,7 @@ export function ProjectPage({
             {pct}% done · {project.story_count} {project.story_count === 1 ? 'story' : 'stories'}
           </span>
         </div>
-        {tab === 'work' && (
+        {tab === 'work' && perms.canManageSprints && (
           <button className="btn primary" onClick={() => setShowSprintModal(true)}>
             <Plus size={16} /> Create sprint
           </button>
@@ -192,13 +199,64 @@ export function ProjectPage({
         <a href={projectHref(projectId)} className={tab === 'work' ? 'tab active' : 'tab'} aria-current={tab === 'work'}>
           <ListChecks size={15} /> Backlog &amp; sprints
         </a>
-        <a href={resourcesHref(projectId)} className={tab === 'resources' ? 'tab active' : 'tab'} aria-current={tab === 'resources'}>
-          <Cloud size={15} /> Resources
-        </a>
+        {perms.canSeeResources && (
+          <a href={resourcesHref(projectId)} className={tab === 'resources' ? 'tab active' : 'tab'} aria-current={tab === 'resources'}>
+            <Cloud size={15} /> Resources
+          </a>
+        )}
+        {perms.canManageProject && (
+          <a href={settingsHref(projectId)} className={tab === 'settings' ? 'tab active' : 'tab'} aria-current={tab === 'settings'}>
+            <Settings size={15} /> Settings
+          </a>
+        )}
       </nav>
 
+      {perms.archived && (
+        <div className="notice notice-archived">
+          <Archive size={16} />
+          <span>This project is archived, so it&apos;s read-only.</span>
+          {perms.canManageProject && tab !== 'settings' && <a href={settingsHref(projectId)}>Restore it in Settings</a>}
+        </div>
+      )}
+      {!perms.archived && (perms.access === 'reader' || perms.access === 'viewer') && (
+        <div className="notice">
+          <Eye size={16} />
+          <span>
+            {perms.access === 'viewer'
+              ? `You're a ${PROJECT_ROLE_LABEL.viewer.toLowerCase()} here: you can read and comment, but not change work.`
+              : "You're browsing an open project. Ask its scrum master to add you to make changes or comment."}
+          </span>
+        </div>
+      )}
 
-      {tab === 'resources' && <ResourcesTab projectId={projectId} users={users} />}
+
+      {tab === 'resources' &&
+        (perms.canSeeResources ? (
+          <ResourcesTab projectId={projectId} users={users} canEdit={perms.canEditResources} />
+        ) : (
+          <div className="panel resource-empty">
+            <Lock size={28} />
+            <h3>Resources are for project contributors</h3>
+            <p>Costs and infrastructure details are visible to contributors and scrum masters.</p>
+          </div>
+        ))}
+
+      {tab === 'settings' &&
+        (perms.canManageProject ? (
+          <ProjectSettings
+            project={project}
+            users={users}
+            onProjectChange={(p) => {
+              setProject(p)
+              onChanged()
+            }}
+          />
+        ) : (
+          <div className="panel resource-empty">
+            <Lock size={28} />
+            <h3>Only the scrum master can change project settings</h3>
+          </div>
+        ))}
 
       {tab === 'work' && (
       <>
@@ -282,12 +340,12 @@ export function ProjectPage({
                   <span className="muted">
                     {done}/{items.length} done
                   </span>
-                  {sprint.status === 'planned' && (
+                  {perms.canManageSprints && sprint.status === 'planned' && (
                     <button className="btn" onClick={() => setSprintStatus(sprint.id, 'active')}>
                       <Play size={14} /> Start sprint
                     </button>
                   )}
-                  {sprint.status === 'active' && (
+                  {perms.canManageSprints && sprint.status === 'active' && (
                     <button className="btn" onClick={() => setSprintStatus(sprint.id, 'completed')}>
                       <CircleCheckBig size={14} /> Complete sprint
                     </button>
@@ -301,17 +359,18 @@ export function ProjectPage({
                       users={users}
                       selected={s.id === storyId}
                       onOpen={onSelectStory}
-                      onAddUser={addUser}
+                      onAddUser={addUserIfAdmin}
+                      readOnly={!perms.canEditWork}
                       onChange={changeStory}
                     />
                   ))}
                 </ul>
               )}
-              {sprint.status !== 'completed' && (
+              {perms.canEditWork && sprint.status !== 'completed' && (
                 <div className="panel-foot">
                   <StoryComposer labelSuggestions={allLabels}
                     users={users}
-                    onAddUser={addUser} onCreate={(d) => createStory(sprint.id, d)} />
+                    onAddUser={addUserIfAdmin} onCreate={(d) => createStory(sprint.id, d)} />
                 </div>
               )}
             </div>
@@ -333,21 +392,24 @@ export function ProjectPage({
                       users={users}
                       selected={s.id === storyId}
                       onOpen={onSelectStory}
-                      onAddUser={addUser}
+                      onAddUser={addUserIfAdmin}
+                      readOnly={!perms.canEditWork}
                       onChange={changeStory}
                     />
               ))}
             </ul>
           )}
+          {perms.canEditWork && (
           <div className="panel-foot">
             <StoryComposer
               placeholder="Add to backlog…"
               labelSuggestions={allLabels}
                     users={users}
-                    onAddUser={addUser}
+                    onAddUser={addUserIfAdmin}
               onCreate={(d) => createStory(null, d)}
             />
           </div>
+          )}
         </div>
       </section>
       </>
@@ -374,13 +436,14 @@ export function ProjectPage({
           allLabels={allLabels}
           currentUserId={currentUserId}
           onChange={changeStory}
-          onAddUser={addUser}
+          onAddUser={addUserIfAdmin}
           onDelete={deleteStory}
           onClose={() => onSelectStory(null)}
           parent={selected.parent_id ? (stories.find((s) => s.id === selected.parent_id) ?? null) : null}
           subtasks={childrenOf.get(selected.id) ?? []}
           onCreateSubtask={(title) => createSubtask(selected.id, title)}
           onOpenStory={onSelectStory}
+          perms={perms}
         />
       )}
     </>

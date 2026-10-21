@@ -9,23 +9,14 @@ import {
   STATUS_LABEL,
   formatCost,
   type Environment,
-  type Provider,
 } from '../resources'
 import { Avatar } from './Avatar'
 import { FilterDropdown } from './FilterDropdown'
+import { ProviderBadge } from './ProviderBadge'
 import { ResourceModal } from './ResourceModal'
 import { confirm } from '../confirm'
 
-export function ProviderBadge({ provider }: { provider: Provider }) {
-  const p = PROVIDERS[provider]
-  return (
-    <span className="provider-badge" style={{ background: p.color, color: p.text }} title={p.label}>
-      {p.short}
-    </span>
-  )
-}
-
-export function ResourcesTab({ projectId, users }: { projectId: string; users: User[] }) {
+export function ResourcesTab({ projectId, users, canEdit }: { projectId: string; users: User[]; canEdit: boolean }) {
   const [resources, setResources] = useState<Resource[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<Resource | 'new' | null>(null)
@@ -166,9 +157,11 @@ export function ResourcesTab({ projectId, users }: { projectId: string; users: U
           <Search size={14} />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, ID, region…" />
         </label>
-        <button className="btn primary resource-add" onClick={() => setEditing('new')}>
-          <Plus size={16} /> Add resource
-        </button>
+        {canEdit && (
+          <button className="btn primary resource-add" onClick={() => setEditing('new')}>
+            <Plus size={16} /> Add resource
+          </button>
+        )}
       </div>
 
       {error && <p className="empty">Couldn&apos;t load this. Try refreshing the page.</p>}
@@ -178,10 +171,16 @@ export function ResourcesTab({ projectId, users }: { projectId: string; users: U
         <div className="panel resource-empty">
           <Cloud size={28} />
           <h3>Track what this project runs on</h3>
-          <p>Add the servers, buckets, databases and services this project uses, with their environment, owner and cost.</p>
-          <button className="btn primary" onClick={() => setEditing('new')}>
-            <Plus size={16} /> Add your first resource
-          </button>
+          {canEdit ? (
+            <>
+              <p>Add the servers, buckets, databases and services this project uses, with their environment, owner and cost.</p>
+              <button className="btn primary" onClick={() => setEditing('new')}>
+                <Plus size={16} /> Add your first resource
+              </button>
+            </>
+          ) : (
+            <p>No resources recorded yet. The project&apos;s scrum master can add them.</p>
+          )}
         </div>
       )}
 
@@ -211,9 +210,13 @@ export function ResourcesTab({ projectId, users }: { projectId: string; users: U
                         <div className="resource-name">
                           <ProviderBadge provider={r.provider} />
                           <div className="resource-name-text">
-                            <button type="button" className="resource-title" onClick={() => setEditing(r)}>
-                              {r.name}
-                            </button>
+                            {canEdit ? (
+                              <button type="button" className="resource-title" onClick={() => setEditing(r)}>
+                                {r.name}
+                              </button>
+                            ) : (
+                              <span className="resource-title static">{r.name}</span>
+                            )}
                             {r.identifier && (
                               <code className="resource-id" title={r.identifier}>
                                 {r.identifier}
@@ -248,12 +251,16 @@ export function ResourcesTab({ projectId, users }: { projectId: string; users: U
                               <ExternalLink size={15} />
                             </a>
                           )}
-                          <button type="button" className="row-icon-btn" onClick={() => setEditing(r)} title="Edit" aria-label="Edit">
-                            <Pencil size={15} />
-                          </button>
-                          <button type="button" className="row-icon-btn danger" onClick={() => void remove(r)} title="Remove" aria-label="Remove">
-                            <Trash2 size={15} />
-                          </button>
+                          {canEdit && (
+                            <>
+                              <button type="button" className="row-icon-btn" onClick={() => setEditing(r)} title="Edit" aria-label="Edit">
+                                <Pencil size={15} />
+                              </button>
+                              <button type="button" className="row-icon-btn danger" onClick={() => void remove(r)} title="Remove" aria-label="Remove">
+                                <Trash2 size={15} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -1,5 +1,5 @@
 import { ListTree, Tag, UserRound } from 'lucide-react'
-import type { Status } from '../data'
+import { STATUS_LABEL, type Status } from '../data'
 import type { Sprint, Story, User } from '../api'
 import { AssigneePicker } from './AssigneePicker'
 import { Avatar } from './Avatar'
@@ -16,10 +16,13 @@ export function StoryRow({
   allLabels,
   users,
   selected,
+  readOnly = false,
   onOpen,
   onAddUser,
   onChange,
 }: {
+  // Viewers and readers see the row without any of its edit controls.
+  readOnly?: boolean
   story: Story
   subtasks?: Story[]
   sprints: Sprint[]
@@ -27,7 +30,8 @@ export function StoryRow({
   users: User[]
   selected: boolean
   onOpen: (id: string) => void
-  onAddUser: (name: string) => Promise<User>
+  // Only admins can add people, so this is omitted for everyone else.
+  onAddUser?: (name: string) => Promise<User>
   onChange: (
     id: string,
     patch: { status?: Status; sprint_id?: string | null; labels?: string[]; assignee_id?: string | null },
@@ -66,6 +70,7 @@ export function StoryRow({
             {subtasks.filter((s) => s.status === 'done').length}/{subtasks.length}
           </span>
         )}
+        {!readOnly && (
         <LabelPicker
           value={story.labels}
           suggestions={allLabels}
@@ -82,15 +87,24 @@ export function StoryRow({
             </button>
           )}
         />
+        )}
       </div>
       {/* Fixed-width cells keep these columns lined up across rows. */}
       <span className="story-cell cell-points">
         {story.points !== null && <span className="points">{story.points}</span>}
       </span>
       <span className="story-cell cell-status">
-        {!inBacklog && <StatusPicker value={story.status} onChange={(status) => onChange(story.id, { status })} />}
+        {!inBacklog &&
+          (readOnly ? (
+            <span className={`pill status-${story.status}`}>{STATUS_LABEL[story.status]}</span>
+          ) : (
+            <StatusPicker value={story.status} onChange={(status) => onChange(story.id, { status })} />
+          ))}
       </span>
       <span className="story-cell cell-assignee">
+        {readOnly ? (
+          <ReadOnlyAvatar user={users.find((u) => u.id === story.assignee_id)} />
+        ) : (
         <AssigneePicker
           value={story.assignee_id}
           users={users}
@@ -114,10 +128,25 @@ export function StoryRow({
             </button>
           )}
         />
+        )}
       </span>
       <span className="story-cell cell-actions">
-        <RowMenu sprintId={story.sprint_id} sprints={sprints} onMove={(sprint_id) => onChange(story.id, { sprint_id })} />
+        {!readOnly && (
+          <RowMenu sprintId={story.sprint_id} sprints={sprints} onMove={(sprint_id) => onChange(story.id, { sprint_id })} />
+        )}
       </span>
     </li>
+  )
+}
+
+function ReadOnlyAvatar({ user }: { user: User | undefined }) {
+  return user ? (
+    <span title={user.name}>
+      <Avatar name={user.name} size={24} />
+    </span>
+  ) : (
+    <span className="avatar-empty" title="Unassigned">
+      <UserRound size={14} />
+    </span>
   )
 }

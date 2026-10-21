@@ -2,12 +2,33 @@ import { STATUS_LABEL, type Priority, type Status } from './data'
 import type { Environment, Provider, ResourceStatus } from './resources'
 import { toast } from './toast'
 
-export type Me = { id: string; email: string; name: string; org_id: string; role: string }
+export type OrgRole = 'admin' | 'member' | 'guest'
+export type ProjectRole = 'scrum_master' | 'contributor' | 'viewer'
+export type Visibility = 'open' | 'private'
+
+export type Me = {
+  id: string
+  email: string | null
+  name: string
+  org_id: string
+  role: OrgRole
+  project_roles: Record<string, ProjectRole>
+}
 
 export type User = {
   id: string
   name: string
   email: string | null
+  org_role: OrgRole
+}
+
+export type Member = { user_id: string; role: ProjectRole; created_at: string }
+
+export const ORG_ROLE_LABEL: Record<OrgRole, string> = { admin: 'Admin', member: 'Member', guest: 'Guest' }
+export const PROJECT_ROLE_LABEL: Record<ProjectRole, string> = {
+  scrum_master: 'Scrum master',
+  contributor: 'Contributor',
+  viewer: 'Viewer',
 }
 
 export type Project = {
@@ -16,6 +37,10 @@ export type Project = {
   key: string
   description: string
   color: string
+  visibility: Visibility
+  archived_at: string | null
+  // null when you can only read it because it's open to the org
+  my_role: ProjectRole | null
   story_count: number
   done_count: number
   sprint_count: number
@@ -81,6 +106,23 @@ export type Resource = {
 
 export type ResourceInput = Omit<Resource, 'id' | 'project_id' | 'created_at' | 'updated_at'>
 
+// Dev mode only: act as another person (the backend ignores this header in real auth mode).
+export const DEV_USER_KEY = 'yeet.devUser'
+
+function devUserHeader(): Record<string, string> {
+  try {
+    const id = localStorage.getItem(DEV_USER_KEY)
+    return id ? { 'X-Dev-User': id } : {}
+  } catch {
+    return {}
+  }
+}
+
+// Thrown for 401s so the app can show sign-in instead of an error toast.
+export class AuthError extends Error {}
+
+export const AUTH_REQUIRED_EVENT = 'yeet:auth-required'
+
 type Success<T> = string | ((data: T) => string)
 
 // Every call goes through here: failures always raise an error toast; mutating
@@ -91,7 +133,8 @@ async function request<T>(path: string, init?: RequestInit, success?: Success<T>
   try {
     res = await fetch(`/api${path}`, {
       ...init,
-      headers: { 'Content-Type': 'application/json', ...init?.headers },
+      headers: { 'Content-Type': 'application/json', ...devUserHeader(), ...init?.headers },
+      credentials: 'same-origin',
     })
   } catch {
     toast.error("Can't reach the server", { description: 'Check your connection or that the backend is running.' })
@@ -106,6 +149,11 @@ async function request<T>(path: string, init?: RequestInit, success?: Success<T>
         message = body.detail.map((d: { msg: string }) => d.msg.replace(/^Value error, /, '')).join(', ')
     } catch {
       // keep the generic message
+    }
+    if (res.status === 401) {
+      // Session missing or expired mid-use: let the app switch to the sign-in screen.
+      window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT))
+      throw new AuthError(message)
     }
     const reading = !init?.method || init.method === 'GET'
     const title =
@@ -139,12 +187,29 @@ function storyUpdateMessage(story: Story, body: Partial<Story>) {
 export const api = {
   me: () => request<Me>('/me'),
   listUsers: () => request<User[]>('/users'),
-  createUser: (body: { name: string; email?: string }) =>
+  authConfig: () => request<{ mode: 'dev' | 'stytch' }>('/auth/config'),
+  updateUserRole: (id: string, org_role: OrgRole) =>
+    request<User>(`/users/${id}/role`, json('PATCH', { org_role }), (u) => `${u.name} is now ${ORG_ROLE_LABEL[u.org_role].toLowerCase()}`),
+  createUser: (body: { name: string; email?: string; org_role?: OrgRole }) =>
     request<User>('/users', json('POST', body), (u) => `${u.name} added to the team`),
 
   listProjects: () => request<Project[]>('/projects'),
   getProject: (id: string) => request<Project>(`/projects/${id}`),
-  createProject: (body: { name: string; key?: string; description?: string; color?: string }) =>
+  updateProject: (
+    id: string,
+    body: Partial<{ name: string; description: string; color: string; visibility: Visibility; archived: boolean }>,
+  ) =>
+    request<Project>(`/projects/${id}`, json('PATCH', body), (p) =>
+      'archived' in body ? (p.archived_at ? `${p.name} archived` : `${p.name} restored`) : `${p.name} updated`,
+    ),
+  listMembers: (projectId: string) => request<Member[]>(`/projects/${projectId}/members`),
+  addMember: (projectId: string, user_id: string, role: ProjectRole) =>
+    request<Member>(`/projects/${projectId}/members`, json('POST', { user_id, role }), 'Member added'),
+  updateMember: (projectId: string, userId: string, role: ProjectRole) =>
+    request<Member>(`/projects/${projectId}/members/${userId}`, json('PATCH', { role }), (m) => `Role changed to ${PROJECT_ROLE_LABEL[m.role]}`),
+  removeMember: (projectId: string, userId: string) =>
+    request<void>(`/projects/${projectId}/members/${userId}`, { method: 'DELETE' }, 'Member removed'),
+  createProject: (body: { name: string; key?: string; description?: string; color?: string; visibility?: Visibility }) =>
     request<Project>('/projects', json('POST', body), (p) => `Project "${p.name}" created`),
 
   listSprints: (projectId: string) => request<Sprint[]>(`/projects/${projectId}/sprints`),

@@ -20,7 +20,8 @@ export function StoryComposer({
   placeholder?: string
   labelSuggestions: string[]
   users: User[]
-  onAddUser: (name: string) => Promise<User>
+  // Only admins can add people, so this is omitted for everyone else.
+  onAddUser?: (name: string) => Promise<User>
   onCreate: (story: {
     title: string
     priority: Priority

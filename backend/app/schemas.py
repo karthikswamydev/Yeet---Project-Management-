@@ -8,11 +8,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 Status = Literal["todo", "in_progress", "in_review", "done"]
 Priority = Literal["urgent", "high", "medium", "low"]
 SprintStatus = Literal["planned", "active", "completed"]
+OrgRole = Literal["admin", "member", "guest"]
+ProjectRole = Literal["scrum_master", "contributor", "viewer"]
+Visibility = Literal["open", "private"]
 
 
 class UserCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     email: str | None = Field(default=None, max_length=320)
+    org_role: Literal["admin", "member", "guest"] = "member"
 
     @field_validator("name")
     @classmethod
@@ -39,6 +43,21 @@ class UserOut(BaseModel):
     id: uuid.UUID
     name: str
     email: str | None
+    org_role: OrgRole
+
+
+class UserRoleUpdate(BaseModel):
+    org_role: OrgRole
+
+
+class MeOut(BaseModel):
+    id: uuid.UUID
+    email: str | None
+    name: str
+    org_id: uuid.UUID
+    role: OrgRole
+    # Your role in each project you belong to. Admins can act as scrum master everywhere.
+    project_roles: dict[uuid.UUID, ProjectRole]
 
 
 class ProjectCreate(BaseModel):
@@ -46,6 +65,7 @@ class ProjectCreate(BaseModel):
     key: str | None = Field(default=None, max_length=10)
     description: str = ""
     color: str = Field(default="#0047ab", pattern=r"^#[0-9a-fA-F]{6}$")
+    visibility: Visibility = "open"
 
     @field_validator("key")
     @classmethod
@@ -66,9 +86,38 @@ class ProjectOut(BaseModel):
     key: str
     description: str
     color: str
+    visibility: Visibility
+    archived_at: datetime | None
+    # Your role here: null when you can only read it because it's open to the org.
+    my_role: ProjectRole | None = None
     story_count: int = 0
     done_count: int = 0
     sprint_count: int = 0
+
+
+class ProjectUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = None
+    color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    visibility: Visibility | None = None
+    archived: bool | None = None
+
+
+class MemberCreate(BaseModel):
+    user_id: uuid.UUID
+    role: ProjectRole = "contributor"
+
+
+class MemberUpdate(BaseModel):
+    role: ProjectRole
+
+
+class MemberOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: uuid.UUID
+    role: ProjectRole
+    created_at: datetime
 
 
 class SprintCreate(BaseModel):

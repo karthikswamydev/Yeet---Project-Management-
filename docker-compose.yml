@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-yeet}
       POSTGRES_DB: ${POSTGRES_DB:-yeet}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -21,8 +21,12 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-yeet}:${POSTGRES_PASSWORD:-yeet}@db:5432/${POSTGRES_DB:-yeet}
       CORS_ORIGINS: '["http://localhost:5173"]'
+      APP_ENV: ${APP_ENV:-local}
+      AUTH_MODE: ${AUTH_MODE:-dev}
+      STYTCH_PROJECT_ID: ${STYTCH_PROJECT_ID:-}
+      STYTCH_ENV: ${STYTCH_ENV:-test}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./backend:/app
     depends_on:
@@ -33,8 +37,10 @@ services:
     build: ./frontend
     environment:
       API_PROXY_TARGET: http://backend:8000
+      VITE_STYTCH_PUBLIC_TOKEN: ${STYTCH_PUBLIC_TOKEN:-}
+      VITE_STYTCH_SESSION_MINUTES: ${STYTCH_SESSION_MINUTES:-60}
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules
