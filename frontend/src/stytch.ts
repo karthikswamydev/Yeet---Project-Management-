@@ -13,3 +13,13 @@ export const stytch = publicToken ? createStytchB2BClient(publicToken) : null
 export const sessionMinutes = Number(import.meta.env.VITE_STYTCH_SESSION_MINUTES) || 60
 
 export const authenticateUrl = () => `${window.location.origin}/authenticate`
+
+export async function signOut() {
+  try {
+    // Ends the session at Stytch too, not just in this browser.
+    await stytch?.session.revoke()
+  } catch {
+    // Already expired or unreachable: the local cookies are cleared either way.
+  }
+  window.location.replace('/')
+}

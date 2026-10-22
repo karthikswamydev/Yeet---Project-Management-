@@ -11,7 +11,9 @@ export type Me = {
   email: string | null
   name: string
   org_id: string
+  org_name: string
   role: OrgRole
+  created_at: string
   project_roles: Record<string, ProjectRole>
 }
 
@@ -186,6 +188,7 @@ function storyUpdateMessage(story: Story, body: Partial<Story>) {
 
 export const api = {
   me: () => request<Me>('/me'),
+  updateMe: (body: { name: string }) => request<Me>('/me', json('PATCH', body), 'Profile updated'),
   listUsers: () => request<User[]>('/users'),
   authConfig: () => request<{ mode: 'dev' | 'stytch' }>('/auth/config'),
   updateUserRole: (id: string, org_role: OrgRole) =>

@@ -1,5 +1,5 @@
-import { ArrowRight, CalendarClock, CircleCheckBig, ListTodo, TriangleAlert } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowRight } from 'lucide-react'
+import { useRef, useState } from 'react'
 import type { Project } from '../api'
 import { STATUS_LABEL } from '../data'
 import { projectHref, storyHref } from '../routes'
@@ -7,6 +7,7 @@ import { daysUntil, dueText, timeAgo } from '../time'
 import { storyDueDays, useWorkData } from '../useWorkData'
 import { Avatar } from './Avatar'
 import { ProjectCards } from './ProjectCards'
+import { StatStrip } from './StatStrip'
 import { WorkRow } from './WorkRow'
 
 type Tab = 'open' | 'overdue' | 'done'
@@ -31,6 +32,7 @@ export function Dashboard({
 }) {
   const { stories, sprints, users, error } = useWorkData()
   const [tab, setTab] = useState<Tab>('open')
+  const myWorkRef = useRef<HTMLElement>(null)
   const [today] = useState(() =>
     new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }),
   )
@@ -43,10 +45,6 @@ export function Dashboard({
   const open = mine.filter((s) => s.status !== 'done')
   const dueDays = (s: (typeof all)[number]) => storyDueDays(s, sprintById, daysUntil)
   const overdue = open.filter((s) => (dueDays(s) ?? 0) < 0)
-  const dueThisWeek = open.filter((s) => {
-    const d = dueDays(s)
-    return d !== null && d >= 0 && d <= 7
-  })
   const done = mine.filter((s) => s.status === 'done')
 
   // Open work sorted by urgency: overdue/soonest sprint due first, then priority.
@@ -55,12 +53,6 @@ export function Dashboard({
     (dueDays(a) ?? 999) - (dueDays(b) ?? 999) || PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]
   const tabStories = { open: [...open].sort(byUrgency), overdue: [...overdue].sort(byUrgency), done }[tab]
 
-  const stats = [
-    { label: 'Assigned to me', value: open.length, icon: ListTodo, tone: 'neutral' },
-    { label: 'Due this week', value: dueThisWeek.length, icon: CalendarClock, tone: 'info' },
-    { label: 'Overdue', value: overdue.length, icon: TriangleAlert, tone: 'danger' },
-    { label: 'Completed', value: done.length, icon: CircleCheckBig, tone: 'success' },
-  ]
 
   const activeSprints = sprints.filter((s) => s.status === 'active')
 
@@ -75,22 +67,20 @@ export function Dashboard({
 
       {error && <p className="empty">Couldn&apos;t load this. Try refreshing the page.</p>}
 
-      <div className="stats">
-        {stats.map(({ icon: Icon, ...s }) => (
-          <div key={s.label} className={`stat stat-${s.tone}`}>
-            <span className="stat-icon">
-              <Icon size={20} />
-            </span>
-            <div>
-              <div className="stat-value">{stories ? s.value : '–'}</div>
-              <div className="stat-label">{s.label}</div>
-            </div>
-          </div>
-        ))}
-      </div>
+      <StatStrip
+        open={open}
+        overdue={overdue}
+        done={done}
+        dueDays={dueDays}
+        loading={stories === null}
+        onSelect={(t) => {
+          setTab(t)
+          myWorkRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }}
+      />
 
       <div className="two-col">
-        <section className="panel">
+        <section className="panel" ref={myWorkRef}>
           <div className="panel-head">
             <h2>My work</h2>
             <div className="tabs" role="tablist">

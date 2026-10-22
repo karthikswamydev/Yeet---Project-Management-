@@ -1,8 +1,8 @@
-import { Check, ChevronDown, FlaskConical, LogOut } from 'lucide-react'
+import { Building2, Check, ChevronDown, FlaskConical, LogOut, UserRound } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api, DEV_USER_KEY, ORG_ROLE_LABEL, type User } from '../api'
 import { useAuth } from '../auth'
-import { stytch } from '../stytch'
+import { signOut } from '../stytch'
 import { Avatar } from './Avatar'
 
 export function UserMenu() {
@@ -45,7 +45,11 @@ export function UserMenu() {
     <div className="user-menu" ref={ref}>
       <button type="button" className="user-trigger" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
         <Avatar name={me.name} size={32} />
-        <ChevronDown size={14} />
+        <span className="user-trigger-text">
+          <span className="user-trigger-name">{me.name}</span>
+          <span className="user-trigger-role">{ORG_ROLE_LABEL[me.role]}</span>
+        </span>
+        <ChevronDown size={16} className="user-trigger-caret" />
       </button>
       {open && (
         <div className="user-pop" role="menu">
@@ -56,6 +60,22 @@ export function UserMenu() {
               <div className="user-pop-email">{me.email ?? 'No email'}</div>
             </div>
             <span className={`role-badge role-${me.role}`}>{ORG_ROLE_LABEL[me.role]}</span>
+          </div>
+
+          <div className="user-pop-section">
+            <div className="user-pop-row">
+              <Building2 size={15} />
+              <span className="menu-text">{me.org_name}</span>
+              <span className="user-pop-hint">Workspace</span>
+            </div>
+            <a href="#/account" className="user-pop-action" role="menuitem" onClick={() => setOpen(false)}>
+              <UserRound size={15} /> Account settings
+            </a>
+            {mode === 'stytch' && (
+              <button type="button" className="user-pop-action" role="menuitem" onClick={() => void signOut()}>
+                <LogOut size={15} /> Sign out
+              </button>
+            )}
           </div>
 
           {mode === 'dev' && (
@@ -83,25 +103,8 @@ export function UserMenu() {
             </div>
           )}
 
-          {mode === 'stytch' && (
-            <div className="user-pop-section">
-              <button type="button" className="user-pop-action" onClick={() => void signOut()}>
-                <LogOut size={15} /> Sign out
-              </button>
-            </div>
-          )}
         </div>
       )}
     </div>
   )
-}
-
-async function signOut() {
-  try {
-    // Ends the session at Stytch too, not just in this browser.
-    await stytch?.session.revoke()
-  } catch {
-    // Already expired or unreachable: the local cookies are cleared either way.
-  }
-  window.location.replace('/')
 }

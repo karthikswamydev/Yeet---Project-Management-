@@ -11,6 +11,7 @@ export type Route =
   | { page: 'home' }
   | { page: 'my-work' }
   | { page: 'people' }
+  | { page: 'account' }
   | { page: 'project'; projectId: string; storyId: string | null; tab: ProjectTab }
 
 export type ProjectTab = 'work' | 'resources' | 'settings'
@@ -18,6 +19,7 @@ export type ProjectTab = 'work' | 'resources' | 'settings'
 function parse(hash: string): Route {
   if (/^#\/my-work\/?$/.test(hash)) return { page: 'my-work' }
   if (/^#\/settings\/people\/?$/.test(hash)) return { page: 'people' }
+  if (/^#\/account\/?$/.test(hash)) return { page: 'account' }
   const sub = /^#\/projects\/([^/]+)\/(resources|settings)\/?$/.exec(hash)
   if (sub) return { page: 'project', projectId: sub[1], storyId: null, tab: sub[2] as ProjectTab }
   const m = /^#\/projects\/([^/]+)(?:\/stories\/([^/]+))?/.exec(hash)

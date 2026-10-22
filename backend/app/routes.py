@@ -171,14 +171,34 @@ def auth_config() -> dict[str, str]:
     return {"mode": settings.auth_mode}
 
 
-@router.get("/me")
-def me(db: DB, user: User) -> schemas.MeOut:
+def _me_out(db: Session, user: CurrentUser) -> schemas.MeOut:
     rows = db.execute(
         select(models.ProjectMember.project_id, models.ProjectMember.role).where(
             models.ProjectMember.user_id == user.id
         )
     ).all()
-    return schemas.MeOut(**user.model_dump(), project_roles={pid: role for pid, role in rows})
+    org_name = db.scalar(select(models.Organization.name).where(models.Organization.id == user.org_id)) or "Workspace"
+    created_at = db.scalar(select(models.User.created_at).where(models.User.id == user.id))
+    return schemas.MeOut(
+        **user.model_dump(),
+        org_name=org_name,
+        created_at=created_at,
+        project_roles={pid: role for pid, role in rows},
+    )
+
+
+@router.get("/me")
+def me(db: DB, user: User) -> schemas.MeOut:
+    return _me_out(db, user)
+
+
+@router.patch("/me")
+def update_me(body: schemas.MeUpdate, db: DB, user: User) -> schemas.MeOut:
+    """Your own display name. Email and org role come from sign-in, so they aren't editable here."""
+    record = db.get(models.User, user.id)
+    record.name = body.name
+    db.commit()
+    return _me_out(db, user.model_copy(update={"name": body.name}))
 
 
 @router.get("/users")

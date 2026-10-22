@@ -7,6 +7,7 @@ import { Dashboard } from './components/Dashboard'
 import { MyWorkPage } from './components/MyWorkPage'
 import { ProjectPage } from './components/ProjectPage'
 import { Sidebar } from './components/Sidebar'
+import { AccountPage } from './components/AccountPage'
 import { PeoplePage } from './components/PeoplePage'
 import { SignIn } from './components/SignIn'
 import { Toaster } from './components/Toaster'
@@ -70,7 +71,7 @@ function App() {
     <AuthContext.Provider value={{ me, mode, refreshMe: () => refreshMeRef.current() }}>
     <div className="app">
       <Sidebar
-        orgName={me ? 'Test Org' : 'Workspace'}
+        orgName={me?.org_name ?? 'Workspace'}
         projects={projects}
         route={route}
         onCreateProject={() => setShowCreate(true)}
@@ -93,6 +94,8 @@ function App() {
           )}
           {route.page === 'my-work' && <MyWorkPage currentUserId={me?.id ?? null} projects={projects} />}
           {route.page === 'people' && <PeoplePage />}
+          {/* Keyed so the form starts from the loaded (or freshly saved) name. */}
+          {route.page === 'account' && me && <AccountPage key={`${me.id}:${me.name}`} projects={projects} />}
           {route.page === 'home' && (
             <Dashboard
               userName={name}

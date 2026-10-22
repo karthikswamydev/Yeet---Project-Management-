@@ -55,9 +55,23 @@ class MeOut(BaseModel):
     email: str | None
     name: str
     org_id: uuid.UUID
+    org_name: str
     role: OrgRole
+    created_at: datetime
     # Your role in each project you belong to. Admins can act as scrum master everywhere.
     project_roles: dict[uuid.UUID, ProjectRole]
+
+
+class MeUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, v: str) -> str:
+        v = " ".join(v.split())
+        if not v:
+            raise ValueError("Name is required")
+        return v
 
 
 class ProjectCreate(BaseModel):
